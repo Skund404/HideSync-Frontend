@@ -6,7 +6,7 @@ import {
   PickingList,
   PickingListItem,
   PickingListStatus,
-} from '../types/pickingList';
+} from '../types/pickinglist';
 
 // Define the extended type to match the context implementation
 type PickingListWithItems = PickingList & {

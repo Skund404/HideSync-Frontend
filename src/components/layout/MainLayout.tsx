@@ -1,7 +1,7 @@
-import React from "react";
-import { Outlet, useLocation } from "react-router-dom";
-import Sidebar from "./Sidebar";
-import Header from "./Header";
+import React from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
+import Header from './Header';
+import Sidebar from './Sidebar';
 
 const MainLayout: React.FC = () => {
   const location = useLocation();
@@ -10,25 +10,25 @@ const MainLayout: React.FC = () => {
   const getPageTitle = (): string => {
     const path = location.pathname;
 
-    if (path === "/") return "Dashboard";
+    if (path === '/') return 'Dashboard';
 
     // Remove leading slash and capitalize
-    const title = path.substring(1).split("/")[0];
+    const title = path.substring(1).split('/')[0];
     return title.charAt(0).toUpperCase() + title.slice(1);
   };
 
   return (
-    <div className="flex h-screen w-full bg-stone-50 text-stone-800">
+    <div className='flex h-screen w-full bg-stone-50 text-stone-800'>
       {/* Sidebar */}
-      <Sidebar />
+      <Sidebar currentPath={location.pathname} />
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className='flex-1 flex flex-col overflow-hidden'>
         {/* Header */}
         <Header title={getPageTitle()} />
 
         {/* Content Area with Scrolling */}
-        <main className="flex-1 overflow-y-auto bg-stone-50 p-6">
+        <main className='flex-1 overflow-y-auto bg-stone-50 p-6'>
           <Outlet />
         </main>
       </div>

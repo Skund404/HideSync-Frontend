@@ -1,53 +1,64 @@
-import { MaterialType } from '@/types/materialTypes'; // Direct import, matching the context
+import { MaterialType } from '@/types/materialTypes';
 import MaterialsFilter from '@components/materials/common/MaterialsFilter';
 import MaterialsHeader from '@components/materials/common/MaterialsHeader';
 import HardwareView from '@components/materials/hardware/HardwareView';
 import LeatherView from '@components/materials/leather/LeatherView';
 import SuppliesView from '@components/materials/supplies/SuppliesView';
 import { useMaterials } from '@context/MaterialsContext';
-import React, { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
-interface MaterialsManagementProps {
-  initialTab?: MaterialType; // Direct type, not namespaced
-}
-
-const MaterialsManagement: React.FC<MaterialsManagementProps> = ({
-  initialTab,
-}) => {
+const MaterialsManagement: React.FC = () => {
   const { activeTab, setActiveTab } = useMaterials();
   const navigate = useNavigate();
+  const { materialType } = useParams<{ materialType?: string }>();
   const location = useLocation();
-  const [showAddMaterial, setShowAddMaterial] = useState(false);
 
-  // Set active tab based on URL or initialTab prop when component mounts
-  useEffect(() => {
-    if (initialTab) {
-      setActiveTab(initialTab);
-    } else if (location.pathname.includes('/leather')) {
-      setActiveTab(MaterialType.LEATHER);
-    } else if (location.pathname.includes('/hardware')) {
-      setActiveTab(MaterialType.HARDWARE);
-    } else if (location.pathname.includes('/supplies')) {
-      setActiveTab(MaterialType.SUPPLIES);
+  // Map URL parameter to MaterialType
+  const getMaterialTypeFromParam = (param?: string): MaterialType => {
+    switch (param) {
+      case 'leather':
+        return MaterialType.LEATHER;
+      case 'hardware':
+        return MaterialType.HARDWARE;
+      case 'supplies':
+        return MaterialType.SUPPLIES;
+      default:
+        return MaterialType.LEATHER;
     }
-  }, [initialTab, location.pathname, setActiveTab]);
+  };
+
+  // Determine initial tab based on route
+  useEffect(() => {
+    const type = getMaterialTypeFromParam(materialType);
+    setActiveTab(type);
+  }, [materialType, setActiveTab]);
 
   // Update URL when active tab changes
   useEffect(() => {
-    if (activeTab === MaterialType.LEATHER) {
-      navigate('/materials/leather');
-    } else if (activeTab === MaterialType.HARDWARE) {
-      navigate('/materials/hardware');
-    } else if (activeTab === MaterialType.SUPPLIES) {
-      navigate('/materials/supplies');
-    } else {
-      navigate('/materials');
+    let newPath = '';
+    switch (activeTab) {
+      case MaterialType.LEATHER:
+        newPath = '/materials/leather';
+        break;
+      case MaterialType.HARDWARE:
+        newPath = '/materials/hardware';
+        break;
+      case MaterialType.SUPPLIES:
+        newPath = '/materials/supplies';
+        break;
+      default:
+        newPath = '/materials/leather';
     }
-  }, [activeTab, navigate]);
+
+    // Only navigate if the current path is different
+    if (newPath !== location.pathname) {
+      navigate(newPath);
+    }
+  }, [activeTab, navigate, location.pathname]);
 
   const handleAddMaterial = () => {
-    setShowAddMaterial(true);
+    console.log('Add material');
   };
 
   // Render appropriate view based on active tab
@@ -60,7 +71,6 @@ const MaterialsManagement: React.FC<MaterialsManagementProps> = ({
       case MaterialType.SUPPLIES:
         return <SuppliesView onAdd={handleAddMaterial} />;
       default:
-        // You could render a combined view or default to leather
         return <LeatherView onAdd={handleAddMaterial} />;
     }
   };
@@ -70,26 +80,6 @@ const MaterialsManagement: React.FC<MaterialsManagementProps> = ({
       <MaterialsHeader onAdd={handleAddMaterial} />
       <MaterialsFilter />
       <div className='p-4'>{renderView()}</div>
-
-      {/* Add Material Modal would go here */}
-      {showAddMaterial && (
-        <div className='fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center'>
-          <div className='bg-white rounded-lg p-6 w-full max-w-xl'>
-            <h2 className='text-xl font-semibold mb-4'>Add New Material</h2>
-            <p className='mb-4 text-stone-500'>
-              Implement add material form based on the active tab.
-            </p>
-            <div className='flex justify-end'>
-              <button
-                onClick={() => setShowAddMaterial(false)}
-                className='px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700'
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

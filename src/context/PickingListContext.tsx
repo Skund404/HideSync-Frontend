@@ -4,7 +4,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid'; // You need to run: npm i --save-dev @types/uuid
 
 // Import directly from the models/enums file if available
-import { PickingList, PickingListFilters } from '../types/pickingList';
+import { PickingList, PickingListFilters } from '../types/pickinglist';
 // Either import from where it's actually defined, or define it here
 
 // Mock function since getPickingLists is not exported from projects

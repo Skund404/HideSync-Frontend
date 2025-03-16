@@ -1,4 +1,4 @@
-// src/types/pickingList.ts
+// src/types/pickinglist.ts
 
 // Enum for picking list status
 export enum PickingListStatus {
@@ -39,4 +39,10 @@ export interface PickingListFilters {
     start?: Date;
     end?: Date;
   };
+}
+
+export interface PickingListSummary {
+  id: number | string; // Allow both number and string IDs
+  status: string;
+  createdAt: string;
 }

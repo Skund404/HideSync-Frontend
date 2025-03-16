@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { usePickingLists } from '../../context/PickingListContext';
-import { PickingListFilters } from '../../types/pickingList';
+import { PickingListFilters } from '../../types/pickinglist';
 
 const PickingListComponent: React.FC = () => {
   const { pickingLists, loading, error, getFilteredPickingLists } =

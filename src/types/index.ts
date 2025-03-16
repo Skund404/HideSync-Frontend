@@ -1,20 +1,33 @@
-// src/types/index.ts
-// Update your existing index.ts file to include all types
-
 // Import all types at the top of the file
+import * as DocumentationTypes from './documentationTypes';
 import * as EnumTypes from './enums';
 import * as MaterialTypes from './materialTypes';
 import * as PatternTypes from './patternTypes';
-import * as ToolTypes from './toolType';
-// Import new project management types
-import * as PickingListTypes from './pickingList';
+import * as PickingListTypes from './pickinglist';
 import * as ProjectTemplateTypes from './projectTemplate';
-import * as RecurringProjectTypes from './recurringProject';
-// Import supplier and purchase types
 import * as PurchaseTypes from './purchaseTypes';
+import * as RecurringProjectTypes from './recurringProject';
 import * as SupplierTypes from './supplierTypes';
+import * as ToolTypes from './toolType';
 
-// Export enum types directly (not with export type) so they can be used as values
+// Export additional sidebar types
+export type { NavItem, NavSection } from '../components/layout/Sidebar';
+// Export documentation types
+export {
+  DocumentationCategory,
+  ResourceType,
+  SkillLevel,
+} from './documentationTypes';
+export type {
+  CategoryDefinition,
+  DocumentationResource,
+  DocumentationSearchQuery,
+  DocumentationSearchResult,
+  DocumentationTag,
+  VideoResource,
+  WorkflowGuide,
+  WorkflowStep,
+} from './documentationTypes';
 // Export non-conflicting model types
 export type { Project, Purchase, Sale } from './models';
 export { PatternFileType } from './patternTypes';
@@ -27,13 +40,13 @@ export type {
   PatternFilters,
 } from './patternTypes';
 // Export picking list types
-export { PickingListStatus } from './pickingList';
+export { PickingListStatus } from './pickinglist';
 export type {
   PickingList,
   PickingListFilters,
   PickingListItem,
-} from './pickingList';
-// Export project template types - remove types that don't exist
+} from './pickinglist';
+// Export project template types
 export type { ProjectTemplate } from './projectTemplate';
 // Export project timeline specific types
 export { ProjectStatus } from './projectTimeline';
@@ -42,6 +55,7 @@ export type {
   ProjectTimelineProps,
   TimelineTask,
 } from './projectTimeline';
+// Export purchase order types
 export type {
   PurchaseOrder,
   PurchaseOrderFilters,
@@ -65,16 +79,18 @@ export type {
   StorageMove,
   StorageUtilization,
 } from './storage';
+// Export supplier types
 export type { Supplier, SupplierFilters } from './supplierTypes';
-// Export all types with namespace
-export { EnumTypes };
-export { MaterialTypes };
-export { ToolTypes };
-export { PatternTypes };
-// Export new namespaces
-export { PickingListTypes };
-export { ProjectTemplateTypes };
-export { RecurringProjectTypes };
-// Export supplier and purchase namespaces
-export { SupplierTypes };
-export { PurchaseTypes };
+// Export namespaces
+export {
+  EnumTypes,
+  MaterialTypes,
+  ToolTypes,
+  PatternTypes,
+  PickingListTypes,
+  ProjectTemplateTypes,
+  RecurringProjectTypes,
+  SupplierTypes,
+  PurchaseTypes,
+  DocumentationTypes,
+};

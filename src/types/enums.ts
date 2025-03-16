@@ -4,7 +4,6 @@
  * This module defines all enum types used throughout the application,
  * covering various aspects of the business from sales to project management.
  */
-
 // Sales and Order Management Enums
 export enum SaleStatus {
   // Initial contact and consultation
@@ -52,6 +51,7 @@ export enum SaleStatus {
   DRAFT = 'draft',
   CONFIRMED = 'confirmed',
   IN_PROGRESS = 'in_progress',
+  WAITING_FOR_MATERIALS = 'waiting_for_materials',
 }
 
 // Alias for SaleStatus to maintain compatibility with existing code
@@ -142,6 +142,8 @@ export enum CustomerSource {
   WEBSITE = 'website',
   ONLINE_STORE = 'online_store',
   MARKETPLACE = 'marketplace',
+  ETSY = 'etsy',
+  SHOPIFY = 'shopify',
   RETAIL = 'retail',
   REFERRAL = 'referral',
   PROFESSIONAL_REFERRAL = 'professional_referral',
@@ -1508,6 +1510,7 @@ export enum CommunicationType {
   WARRANTY_CLAIM = 'warranty_claim',
   REPAIR_REQUEST = 'repair_request',
   PAYMENT_REMINDER = 'payment_reminder',
+  PAYMENT_NOTIFICATION = 'payment_notification',
   MARKETING = 'marketing',
   NEWSLETTER = 'newsletter',
   PROMOTION = 'promotion',

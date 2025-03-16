@@ -2,12 +2,15 @@
 import ProjectTimelineWidget from '@/components/dashboard/ProjectTimelineWidget';
 import PurchaseOrderStatsCard from '@/components/dashboard/PurchaseOrderStatsCard';
 import PurchaseTimelineWidget from '@/components/dashboard/PurchaseTimelineWidget';
+import SalesStatsCard from '@/components/dashboard/SalesStatsCard';
 import StorageSummaryWidget from '@/components/dashboard/StorageSummaryWidget';
 import SupplierActivityWidget from '@/components/dashboard/SupplierActivityWidget';
 import SupplierStatsCard from '@/components/dashboard/SupplierStatsCard';
+import TopProductsWidget from '@/components/dashboard/TopProductsWidget'; // Add this import
 import { ProjectProvider } from '@/context/ProjectContext';
 import { PurchaseOrderProvider } from '@/context/PurchaseContext';
 import { PurchaseTimelineProvider } from '@/context/PurchaseTimelineContext';
+import { SalesProvider } from '@/context/SalesContext';
 import { SupplierProvider } from '@/context/SupplierContext';
 import { Wrench } from 'lucide-react';
 import React from 'react';
@@ -147,6 +150,11 @@ const Dashboard: React.FC = () => {
           <PurchaseOrderStatsCard />
         </PurchaseOrderProvider>
 
+        {/* Add SalesStatsCard here */}
+        <SalesProvider>
+          <SalesStatsCard />
+        </SalesProvider>
+
         {/* Additional stat cards can be placed here in the future */}
       </div>
 
@@ -156,6 +164,18 @@ const Dashboard: React.FC = () => {
         <RecurringProjectStatsCard />
         <PickingListStatsCard />
       </div>
+
+      {/* Sales Analytics Section */}
+      <SalesProvider>
+        <div className='mt-6'>
+          <h3 className='text-lg font-medium text-stone-800 mb-4'>
+            Sales Analytics
+          </h3>
+          <div className='grid grid-cols-1 gap-6'>
+            <TopProductsWidget />
+          </div>
+        </div>
+      </SalesProvider>
 
       {/* Supplier and Purchase Activity Widgets */}
       <div className='grid grid-cols-1 md:grid-cols-2 gap-6 mt-6'>

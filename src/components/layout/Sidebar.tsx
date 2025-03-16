@@ -1,9 +1,77 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
-// Icon component to centralize SVG handling
+// Types
+export interface NavItem {
+  name: string;
+  path: string;
+  icon: string;
+}
+
+export interface NavSection {
+  title: string;
+  items: NavItem[];
+}
+
+// Navigation data
+const navigationData: NavSection[] = [
+  {
+    title: 'Main',
+    items: [{ name: 'Dashboard', path: '/', icon: 'dashboard' }],
+  },
+  {
+    title: 'Workshop',
+    items: [
+      { name: 'Projects', path: '/projects', icon: 'projects' },
+      {
+        name: 'Project Templates',
+        path: '/projects/templates',
+        icon: 'templates',
+      },
+      {
+        name: 'Recurring Projects',
+        path: '/projects/recurring',
+        icon: 'recurring',
+      },
+      {
+        name: 'Picking Lists',
+        path: '/projects/picking-lists',
+        icon: 'picking-list',
+      },
+      { name: 'Patterns', path: '/patterns', icon: 'patterns' },
+      { name: 'Tools', path: '/tools', icon: 'tools' },
+      { name: 'Storage', path: '/storage', icon: 'storage' },
+    ],
+  },
+  {
+    title: 'Materials',
+    items: [
+      { name: 'Leather', path: '/materials/leather', icon: 'leather' },
+      { name: 'Hardware', path: '/materials/hardware', icon: 'hardware' },
+      { name: 'Supplies', path: '/materials/supplies', icon: 'supplies' },
+      { name: 'Inventory', path: '/materials/inventory', icon: 'inventory' },
+    ],
+  },
+  {
+    title: 'Business',
+    items: [
+      { name: 'Sales', path: '/sales', icon: 'sales' },
+      { name: 'Customers', path: '/customers', icon: 'customers' },
+      { name: 'Suppliers', path: '/suppliers', icon: 'suppliers' },
+      { name: 'Purchases', path: '/purchases', icon: 'purchases' },
+      { name: 'Reports', path: '/reports', icon: 'reports' },
+    ],
+  },
+  {
+    title: 'Resources',
+    items: [
+      { name: 'Knowledge Base', path: '/documentation', icon: 'documentation' },
+    ],
+  },
+];
+
+// Icon Component
 const Icon: React.FC<{ name: string }> = ({ name }) => {
-  // Using a switch statement to return the appropriate icon based on name
   switch (name) {
     case 'dashboard':
       return (
@@ -36,6 +104,23 @@ const Icon: React.FC<{ name: string }> = ({ name }) => {
             strokeLinejoin='round'
             strokeWidth={2}
             d='M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2'
+          />
+        </svg>
+      );
+    case 'picking-list':
+      return (
+        <svg
+          xmlns='http://www.w3.org/2000/svg'
+          className='h-5 w-5 mr-3'
+          fill='none'
+          viewBox='0 0 24 24'
+          stroke='currentColor'
+        >
+          <path
+            strokeLinecap='round'
+            strokeLinejoin='round'
+            strokeWidth={2}
+            d='M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4'
           />
         </svg>
       );
@@ -177,7 +262,7 @@ const Icon: React.FC<{ name: string }> = ({ name }) => {
             strokeLinecap='round'
             strokeLinejoin='round'
             strokeWidth={2}
-            d='M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z'
+            d='M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
           />
         </svg>
       );
@@ -283,7 +368,7 @@ const Icon: React.FC<{ name: string }> = ({ name }) => {
           />
         </svg>
       );
-    case 'picking-list':
+    case 'documentation':
       return (
         <svg
           xmlns='http://www.w3.org/2000/svg'
@@ -296,29 +381,16 @@ const Icon: React.FC<{ name: string }> = ({ name }) => {
             strokeLinecap='round'
             strokeLinejoin='round'
             strokeWidth={2}
-            d='M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4'
+            d='M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253'
           />
         </svg>
       );
+    // Add more icons as needed
     default:
       return null;
   }
 };
 
-// Type for navigation item
-interface NavItem {
-  name: string;
-  path: string;
-  icon: string;
-}
-
-// Type for navigation section
-interface NavSection {
-  title: string;
-  items: NavItem[];
-}
-
-// Navigation data structure - updated with new project management features
 // Sidebar Item Component
 const SidebarItem: React.FC<{
   item: NavItem;
@@ -373,10 +445,7 @@ const SidebarSection: React.FC<{
 };
 
 // Main Sidebar Component
-const Sidebar: React.FC = () => {
-  const location = useLocation();
-  const currentPath = location.pathname;
-
+const Sidebar: React.FC<{ currentPath: string }> = ({ currentPath }) => {
   return (
     <div className='w-64 bg-stone-800 text-stone-100 flex flex-col shadow-lg h-full'>
       {/* Logo and Brand */}
@@ -440,54 +509,5 @@ const Sidebar: React.FC = () => {
   );
 };
 
-const navigationData: NavSection[] = [
-  {
-    title: 'Main',
-    items: [{ name: 'Dashboard', path: '/', icon: 'dashboard' }],
-  },
-  {
-    title: 'Workshop',
-    items: [
-      { name: 'Projects', path: '/projects', icon: 'projects' },
-      // New project management features
-      {
-        name: 'Project Templates',
-        path: '/projects/templates',
-        icon: 'templates',
-      },
-      {
-        name: 'Recurring Projects',
-        path: '/projects/recurring',
-        icon: 'recurring',
-      },
-      {
-        name: 'Picking Lists',
-        path: '/projects/picking-lists',
-        icon: 'picking-list',
-      },
-      { name: 'Patterns', path: '/patterns', icon: 'patterns' },
-      { name: 'Tools', path: '/tools', icon: 'tools' },
-      { name: 'Storage', path: '/storage', icon: 'storage' },
-    ],
-  },
-  {
-    title: 'Materials',
-    items: [
-      { name: 'Leather', path: '/materials/leather', icon: 'leather' },
-      { name: 'Hardware', path: '/materials/hardware', icon: 'hardware' },
-      { name: 'Supplies', path: '/materials/supplies', icon: 'supplies' },
-      { name: 'Inventory', path: '/inventory', icon: 'inventory' },
-    ],
-  },
-  {
-    title: 'Business',
-    items: [
-      { name: 'Sales', path: '/sales', icon: 'sales' },
-      { name: 'Customers', path: '/customers', icon: 'customers' },
-      { name: 'Suppliers', path: '/suppliers', icon: 'suppliers' },
-      { name: 'Purchases', path: '/purchases', icon: 'purchases' },
-      { name: 'Reports', path: '/reports', icon: 'reports' },
-    ],
-  },
-];
+export { Icon, navigationData };
 export default Sidebar;

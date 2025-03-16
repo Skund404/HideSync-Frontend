@@ -1,9 +1,25 @@
-// src/App.tsx
-import React from 'react';
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
-import Layout from './components/layout/Layout';
+import { Route, Routes } from 'react-router-dom';
+import './App.css';
+import MainLayout from './components/layout/MainLayout';
+import Dashboard from './pages/Dashboard';
+import InventoryManagement from './pages/InventoryManagement';
+import MaterialRoutes from './pages/MaterialRoutes';
+import PatternRoutes from './pages/PatternRoutes';
+import ProjectRoutes from './pages/ProjectRoutes';
+import PurchaseOrderManagement from './pages/PurchaseOrderManagement';
+import SalesManagement from './pages/SalesManagement';
+import Storage from './pages/Storage';
+import SupplierManagement from './pages/SupplierManagement';
+import ToolManagement from './pages/ToolManagement';
+
+// Import documentation pages
+import ArticlePage from './pages/ArticlePage';
+import Documentation from './pages/Documentation';
+import EditDocumentation from './pages/EditDocumentation';
+
+// Import providers
+import { DocumentationProvider } from './context/DocumentationContext';
 import { MaterialsProvider } from './context/MaterialsContext';
-import { PatternProvider } from './context/PatternContext';
 import { PickingListProvider } from './context/PickingListContext';
 import { ProjectProvider } from './context/ProjectContext';
 import { ProjectTemplateProvider } from './context/ProjectTemplateContext';
@@ -11,81 +27,74 @@ import { PurchaseOrderProvider } from './context/PurchaseContext';
 import { RecurringProjectProvider } from './context/RecurringProjectContext';
 import { StorageProvider } from './context/StorageContext';
 import { SupplierProvider } from './context/SupplierContext';
-import { ToolProvider } from './context/ToolContext';
-import Dashboard from './pages/Dashboard';
-import InventoryManagement from './pages/InventoryManagement';
-import MaterialsManagement from './pages/MaterialsManagement';
-import PatternRoutes from './pages/PatternRoutes';
-import ProjectRoutes from './pages/ProjectRoutes';
-import PurchaseOrderManagement from './pages/PurchaseOrderManagement';
-import RecurringProjectPage from './pages/RecurringProjectPage';
-import Storage from './pages/Storage';
-import SupplierManagement from './pages/SupplierManagement';
-import ToolManagement from './pages/ToolManagement';
 
-const App: React.FC = () => {
+function App() {
   return (
-    <Router>
-      <MaterialsProvider>
-        <StorageProvider>
-          <ToolProvider>
-            <PatternProvider>
-              <ProjectProvider>
-                <ProjectTemplateProvider>
-                  <RecurringProjectProvider>
-                    <PickingListProvider>
-                      <SupplierProvider>
-                        <PurchaseOrderProvider>
-                          <Layout>
-                            <Routes>
-                              <Route path='/' element={<Dashboard />} />
-                              <Route
-                                path='/projects/*'
-                                element={<ProjectRoutes />}
-                              />
-                              <Route
-                                path='/patterns/*'
-                                element={<PatternRoutes />}
-                              />
-                              <Route
-                                path='/tools'
-                                element={<ToolManagement />}
-                              />
-                              <Route path='/storage' element={<Storage />} />
-                              <Route
-                                path='/materials/*'
-                                element={<MaterialsManagement />}
-                              />
-                              <Route
-                                path='/inventory'
-                                element={<InventoryManagement />}
-                              />
-                              <Route
-                                path='/recurring-projects/:id'
-                                element={<RecurringProjectPage />}
-                              />
-                              <Route
-                                path='/suppliers'
-                                element={<SupplierManagement />}
-                              />
-                              <Route
-                                path='/purchases'
-                                element={<PurchaseOrderManagement />}
-                              />
-                            </Routes>
-                          </Layout>
-                        </PurchaseOrderProvider>
-                      </SupplierProvider>
-                    </PickingListProvider>
-                  </RecurringProjectProvider>
-                </ProjectTemplateProvider>
-              </ProjectProvider>
-            </PatternProvider>
-          </ToolProvider>
-        </StorageProvider>
-      </MaterialsProvider>
-    </Router>
+    <ProjectProvider>
+      <PurchaseOrderProvider>
+        <SupplierProvider>
+          <ProjectTemplateProvider>
+            <RecurringProjectProvider>
+              <PickingListProvider>
+                <StorageProvider>
+                  <MaterialsProvider>
+                    <DocumentationProvider>
+                      <Routes>
+                        <Route path='/' element={<MainLayout />}>
+                          <Route index element={<Dashboard />} />
+                          <Route
+                            path='materials/*'
+                            element={<MaterialRoutes />}
+                          />
+                          <Route
+                            path='inventory'
+                            element={<InventoryManagement />}
+                          />
+                          <Route
+                            path='patterns/*'
+                            element={<PatternRoutes />}
+                          />
+                          <Route
+                            path='projects/*'
+                            element={<ProjectRoutes />}
+                          />
+                          <Route path='storage' element={<Storage />} />
+                          <Route path='tools' element={<ToolManagement />} />
+                          <Route
+                            path='suppliers'
+                            element={<SupplierManagement />}
+                          />
+                          <Route
+                            path='purchases'
+                            element={<PurchaseOrderManagement />}
+                          />
+                          <Route path='sales' element={<SalesManagement />} />
+
+                          {/* Documentation System Routes */}
+                          <Route
+                            path='documentation'
+                            element={<Documentation />}
+                          />
+                          <Route
+                            path='documentation/:resourceId'
+                            element={<ArticlePage />}
+                          />
+                          <Route
+                            path='documentation/edit/:resourceId'
+                            element={<EditDocumentation />}
+                          />
+                        </Route>
+                      </Routes>
+                    </DocumentationProvider>
+                  </MaterialsProvider>
+                </StorageProvider>
+              </PickingListProvider>
+            </RecurringProjectProvider>
+          </ProjectTemplateProvider>
+        </SupplierProvider>
+      </PurchaseOrderProvider>
+    </ProjectProvider>
   );
-};
+}
 
 export default App;
