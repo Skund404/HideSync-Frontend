@@ -1,4 +1,8 @@
+// src/services/integrations/platformIntegration.ts
 import { Sale, SalesChannel } from '../../types/salesTypes';
+import { secureLocalStorage } from '../../utils/securityHelpers';
+import { fetchAmazonOrders } from './amazonIntegration';
+import { fetchEbayOrders } from './ebayIntegration';
 import { fetchEtsyOrders } from './etsyIntegration';
 import { fetchShopifyOrders } from './shopifyIntegration';
 
@@ -15,6 +19,8 @@ export interface PlatformAuthConfig {
   endpoint?: string; // Custom endpoint
   redirectUri?: string;
   scopes?: string[];
+  expiresAt?: number; // Token expiration timestamp
+  region?: string; // For Amazon
   [key: string]: any; // Other platform-specific parameters
 }
 
@@ -51,17 +57,23 @@ export interface PlatformOrderData {
 }
 
 /**
- * Save integration configs to local storage
+ * Local storage key for integration configs
+ * In production, this would be in a secure database
+ */
+const STORAGE_KEY = 'hidesync_integrations';
+
+/**
+ * Save integration configs to secure storage
  */
 export const saveIntegrationConfigs = (configs: IntegrationConfigs): void => {
-  localStorage.setItem('hidesync_integrations', JSON.stringify(configs));
+  secureLocalStorage.setItem(STORAGE_KEY, JSON.stringify(configs));
 };
 
 /**
- * Get integration configs from local storage
+ * Get integration configs from secure storage
  */
 export const getIntegrationConfigs = (): IntegrationConfigs => {
-  const configs = localStorage.getItem('hidesync_integrations');
+  const configs = secureLocalStorage.getItem(STORAGE_KEY);
   return configs ? JSON.parse(configs) : {};
 };
 
@@ -108,15 +120,38 @@ export const fetchOrdersFromPlatform = async (
     }
   }
 
+  // Check if token is expired
+  if (config.expiresAt && config.expiresAt < Date.now()) {
+    // Token is expired, need to refresh
+    // In a real implementation, this would call a refresh token function
+    console.warn(`Token for ${platform} is expired. Refresh required.`);
+    throw new Error(
+      `Token for ${platform} is expired. Please reconnect the platform.`
+    );
+  }
+
   // Route to the appropriate platform-specific function
-  switch (platform) {
-    case SalesChannel.SHOPIFY:
-      return fetchShopifyOrders(config, fromDate);
-    case SalesChannel.ETSY:
-      return fetchEtsyOrders(config, fromDate);
-    // Add other platforms as they are implemented
-    default:
-      throw new Error(`Unsupported platform: ${platform}`);
+  try {
+    switch (platform) {
+      case SalesChannel.SHOPIFY:
+        return fetchShopifyOrders(config, fromDate);
+      case SalesChannel.ETSY:
+        return fetchEtsyOrders(config, fromDate);
+      case SalesChannel.AMAZON:
+        return fetchAmazonOrders(config, fromDate);
+      case SalesChannel.EBAY:
+        return fetchEbayOrders(config, fromDate);
+      // Add other platforms as they are implemented
+      default:
+        throw new Error(`Unsupported platform: ${platform}`);
+    }
+  } catch (error) {
+    console.error(`Error fetching orders from ${platform}:`, error);
+    throw new Error(
+      `Failed to fetch orders from ${platform}: ${
+        error instanceof Error ? error.message : 'Unknown error'
+      }`
+    );
   }
 };
 
@@ -278,10 +313,160 @@ export const updateOrderFulfillment = async (
       );
     }
 
-    // Implementation will be added in platform-specific files
-    return true;
+    // Route to the appropriate platform-specific function
+    switch (sale.marketplaceData.platform) {
+      case SalesChannel.SHOPIFY:
+        // Import and call the shopify update function
+        const { updateShopifyFulfillment } = await import(
+          './shopifyIntegration'
+        );
+        return updateShopifyFulfillment(
+          sale.marketplaceData.externalOrderId,
+          trackingNumber,
+          shippingProvider,
+          config
+        );
+      case SalesChannel.ETSY:
+        // Import and call the etsy update function
+        const { updateEtsyFulfillment } = await import('./etsyIntegration');
+        return updateEtsyFulfillment(
+          sale.marketplaceData.externalOrderId,
+          trackingNumber,
+          shippingProvider,
+          config
+        );
+      case SalesChannel.AMAZON:
+        // Import and call the amazon update function
+        const { updateAmazonFulfillment } = await import('./amazonIntegration');
+        return updateAmazonFulfillment(
+          sale.marketplaceData.externalOrderId,
+          trackingNumber,
+          shippingProvider,
+          config
+        );
+      case SalesChannel.EBAY:
+        // Import and call the ebay update function
+        const { updateEbayFulfillment } = await import('./ebayIntegration');
+        return updateEbayFulfillment(
+          sale.marketplaceData.externalOrderId,
+          trackingNumber,
+          shippingProvider,
+          config
+        );
+      default:
+        throw new Error(
+          `Unsupported platform: ${sale.marketplaceData.platform}`
+        );
+    }
   } catch (error) {
     console.error('Error updating order fulfillment:', error);
     return false;
+  }
+};
+
+/**
+ * Generate authorization URL for platform OAuth flow
+ */
+export const generateAuthUrl = async (
+  platform: SalesChannel,
+  config: Partial<PlatformAuthConfig>,
+  redirectUri: string
+): Promise<string> => {
+  try {
+    switch (platform) {
+      case SalesChannel.SHOPIFY:
+        const { getShopifyAuthUrl } = await import('./shopifyIntegration');
+        return getShopifyAuthUrl(
+          config.shopName || '',
+          config.apiKey || '',
+          redirectUri,
+          config.scopes || ['read_orders', 'write_orders']
+        );
+      case SalesChannel.ETSY:
+        const { getEtsyAuthUrl } = await import('./etsyIntegration');
+        return getEtsyAuthUrl(
+          config.apiKey || '',
+          redirectUri,
+          config.scopes || ['transactions_r', 'transactions_w']
+        );
+      case SalesChannel.AMAZON:
+        const { getAmazonAuthUrl } = await import('./amazonIntegration');
+        return getAmazonAuthUrl(
+          config.apiKey || '',
+          redirectUri,
+          platform // Use platform as state parameter
+        );
+      case SalesChannel.EBAY:
+        const { getEbayAuthUrl } = await import('./ebayIntegration');
+        return getEbayAuthUrl(
+          config.apiKey || '',
+          redirectUri,
+          config.scopes || [
+            'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
+          ]
+        );
+      default:
+        throw new Error(
+          `Auth URL generation not implemented for platform: ${platform}`
+        );
+    }
+  } catch (error) {
+    console.error(`Error generating auth URL for ${platform}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Exchange authorization code for access token (OAuth flow)
+ */
+export const exchangeAuthCode = async (
+  platform: SalesChannel,
+  code: string,
+  config: Partial<PlatformAuthConfig>
+): Promise<PlatformAuthConfig> => {
+  try {
+    switch (platform) {
+      case SalesChannel.SHOPIFY:
+        const { exchangeShopifyAuthCode } = await import(
+          './shopifyIntegration'
+        );
+        return exchangeShopifyAuthCode(
+          config.shopName || '',
+          config.apiKey || '',
+          config.apiSecret || '',
+          code
+        );
+      case SalesChannel.ETSY:
+        const { exchangeEtsyAuthCode } = await import('./etsyIntegration');
+        return exchangeEtsyAuthCode(
+          config.apiKey || '',
+          config.apiSecret || '',
+          code,
+          config.redirectUri || ''
+        );
+      case SalesChannel.AMAZON:
+        const { exchangeAmazonAuthCode } = await import('./amazonIntegration');
+        return exchangeAmazonAuthCode(
+          config.apiKey || '',
+          config.apiSecret || '',
+          code,
+          config.redirectUri || ''
+        );
+      case SalesChannel.EBAY:
+        const { exchangeEbayAuthCode } = await import('./ebayIntegration');
+        return exchangeEbayAuthCode(
+          config.apiKey || '',
+          config.apiSecret || '',
+          code,
+          config.redirectUri || ''
+        );
+      default:
+        throw new Error(
+          `Auth code exchange not implemented for platform: ${platform}`
+        );
+    }
+  } catch (error) {
+    console.error(`Error exchanging auth code for ${platform}:`, error);
+    throw error;
   }
 };

@@ -837,6 +837,7 @@ export enum ProjectType {
   BAG = 'BAG',
   CASE = 'CASE',
   ACCESSORY = 'ACCESSORY',
+  LEATHER = 'LEATHER',
 }
 
 /**

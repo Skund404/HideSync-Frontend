@@ -20,8 +20,7 @@ const MainLayout: React.FC = () => {
   return (
     <div className='flex h-screen w-full bg-stone-50 text-stone-800'>
       {/* Sidebar */}
-      <Sidebar currentPath={location.pathname} />
-
+      <Sidebar /> {/* Remove currentPath prop */}
       {/* Main Content */}
       <div className='flex-1 flex flex-col overflow-hidden'>
         {/* Header */}

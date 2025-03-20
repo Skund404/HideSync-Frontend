@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { usePickingLists } from '../../context/PickingListContext';
 import { useProjects } from '../../context/ProjectContext';
 import { useSales } from '../../context/SalesContext';
+import { ProjectStatus, ProjectType } from '../../types/enums';
 import LoadingSpinner from '../common/LoadingSpinner';
 
 interface PickingListGeneratorProps {
@@ -116,13 +117,19 @@ const PickingListGenerator: React.FC<PickingListGeneratorProps> = ({
       const projectData = {
         name: `Order #${sale.id}`,
         description: `Project for order #${sale.id}`,
-        status: 'planned' as any, // Use the correct enum value in actual implementation
-        startDate: new Date(),
-        type: 'custom' as any, // Use the correct enum value in actual implementation
+        status: ProjectStatus.PLANNING, // Using the proper enum value
+        startDate: new Date().toISOString().split('T')[0], // Convert date to string
+        dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .split('T')[0], // 14 days from now
+        type: ProjectType.CUSTOM,
+        customer: `Customer #${sale.id}`,
+        completionPercentage: 0, // Initialize with 0% completion
       };
 
       const project = await createProject(projectData);
-      setProjectId(project.id);
+      // Convert number ID to string for state
+      setProjectId(project.id.toString());
 
       // Step 2: Create picking list
       const selectedMaterials = materials.filter(
@@ -130,7 +137,7 @@ const PickingListGenerator: React.FC<PickingListGeneratorProps> = ({
       );
 
       const pickingListData = {
-        projectId: project.id,
+        projectId: project.id.toString(), // Convert number to string if needed
         notes: notes || `Picking list for order #${sale.id}`,
         // Convert materials to picking list items
         items: selectedMaterials.map((material) => ({

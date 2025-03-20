@@ -1,19 +1,16 @@
 // src/pages/MaterialRoutes.tsx
 import React from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router-dom';
 import InventoryManagement from './InventoryManagement';
 import MaterialsManagement from './MaterialsManagement';
 
 const MaterialRoutes: React.FC = () => {
   return (
     <Routes>
-      <Route index element={<Navigate to='/materials/leather' replace />} />
-      <Route path='leather' element={<MaterialsManagement />} />
-      <Route path='hardware' element={<MaterialsManagement />} />
-      <Route path='supplies' element={<MaterialsManagement />} />
+      {/* Ensure inventory is declared first or in a separate route if needed */}
       <Route path='inventory' element={<InventoryManagement />} />
-      {/* Add a catch-all route for '/inventory' */}
-      <Route path='/inventory' element={<InventoryManagement />} />
+      {/* Dynamic route for material types */}
+      <Route path=':materialType' element={<MaterialsManagement />} />
     </Routes>
   );
 };

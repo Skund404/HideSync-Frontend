@@ -273,7 +273,7 @@ export const ProjectTemplateProvider: React.FC<{
     [templates]
   );
 
-  // Project-Template operations
+  // UPDATED: Project-Template operations with proper type handling
   const createProjectFromTemplate = async (
     data: ProjectFromTemplate
   ): Promise<Project> => {
@@ -314,7 +314,7 @@ export const ProjectTemplateProvider: React.FC<{
       }
 
       // Calculate the due date based on estimated duration if not provided
-      const dueDate =
+      const dueDateObj =
         data.deadline ||
         (() => {
           const date = new Date();
@@ -322,23 +322,32 @@ export const ProjectTemplateProvider: React.FC<{
           return date;
         })();
 
+      // Convert dates to string format as required by Project model
+      const startDateStr = new Date().toISOString().split('T')[0];
+      const dueDateStr = dueDateObj.toISOString().split('T')[0];
+
+      // Create client/customer string from clientId
+      const customerName = data.clientId
+        ? `Client #${data.clientId}` // In a real app, you'd fetch the client name
+        : 'No Client Assigned';
+
       // Create a project object using ProjectContext's expected format
       const newProject = {
         name: data.projectName,
         description: template.description || '',
         status: ProjectStatus.CONCEPT,
-        startDate: new Date(),
-        dueDate: dueDate,
-        clientId: data.clientId,
-        type: template.type.toString(),
-        skillLevel: SkillLevel.INTERMEDIATE.toString(),
+        startDate: startDateStr,
+        dueDate: dueDateStr,
+        customer: customerName,
+        type: mapToProjectType(template.type),
+        completionPercentage: 0, // Initialize with 0% completion
         notes: data.customizations?.notes || template.notes || '',
       };
 
       // Create the project using the createProject function
       const project = await createProject(newProject);
       setLoading(false);
-      return project as unknown as Project;
+      return project;
     } catch (err) {
       setError('Failed to create project from template');
       setLoading(false);
@@ -346,6 +355,7 @@ export const ProjectTemplateProvider: React.FC<{
     }
   };
 
+  // UPDATED: Save project as template with proper ID conversion
   const saveProjectAsTemplate = async (
     projectId: string,
     templateName: string,
@@ -357,7 +367,13 @@ export const ProjectTemplateProvider: React.FC<{
     try {
       setLoading(true);
 
-      const project = getProjectById(projectId);
+      // Convert string projectId to number
+      const numericProjectId = parseInt(projectId, 10);
+      if (isNaN(numericProjectId)) {
+        throw new Error('Invalid project ID');
+      }
+
+      const project = getProjectById(numericProjectId);
       if (!project) {
         throw new Error('Project not found');
       }

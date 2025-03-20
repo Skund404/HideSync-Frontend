@@ -1,3 +1,4 @@
+// src/pages/MaterialsManagement.tsx
 import { MaterialType } from '@/types/materialTypes';
 import MaterialsFilter from '@components/materials/common/MaterialsFilter';
 import MaterialsHeader from '@components/materials/common/MaterialsHeader';
@@ -14,7 +15,7 @@ const MaterialsManagement: React.FC = () => {
   const { materialType } = useParams<{ materialType?: string }>();
   const location = useLocation();
 
-  // Map URL parameter to MaterialType
+  // Map the URL param to a MaterialType
   const getMaterialTypeFromParam = (param?: string): MaterialType => {
     switch (param) {
       case 'leather':
@@ -28,34 +29,14 @@ const MaterialsManagement: React.FC = () => {
     }
   };
 
-  // Determine initial tab based on route
+  // Update activeTab based on the URL param
   useEffect(() => {
     const type = getMaterialTypeFromParam(materialType);
     setActiveTab(type);
   }, [materialType, setActiveTab]);
 
-  // Update URL when active tab changes
-  useEffect(() => {
-    let newPath = '';
-    switch (activeTab) {
-      case MaterialType.LEATHER:
-        newPath = '/materials/leather';
-        break;
-      case MaterialType.HARDWARE:
-        newPath = '/materials/hardware';
-        break;
-      case MaterialType.SUPPLIES:
-        newPath = '/materials/supplies';
-        break;
-      default:
-        newPath = '/materials/leather';
-    }
-
-    // Only navigate if the current path is different
-    if (newPath !== location.pathname) {
-      navigate(newPath);
-    }
-  }, [activeTab, navigate, location.pathname]);
+  // Removed the auto-navigate effect to prevent bidirectional updates.
+  // Instead, update the URL directly in the tab click handlers in your UI.
 
   const handleAddMaterial = () => {
     console.log('Add material');

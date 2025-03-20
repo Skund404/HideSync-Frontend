@@ -2,17 +2,31 @@
 import React from 'react';
 import { useProjects } from '../../context/ProjectContext';
 import { ProjectStatus } from '../../types/enums';
+import { Project } from '../../types/models';
 import ProjectTimeline from '../projects/ProjectTimeline';
+
+// Create an interface that matches what ProjectTimeline expects
+interface ProjectWithStringId extends Omit<Project, 'id'> {
+  id: string;
+}
 
 const ProjectTimelineWidget: React.FC = () => {
   const { projects, loading, error } = useProjects();
 
   // Find the most recent active project
-  const currentProject = projects.find(
+  const activeProject = projects.find(
     (project) =>
       project.status !== ProjectStatus.COMPLETED &&
       project.status !== ProjectStatus.CANCELLED
   );
+
+  // Convert the project to have a string ID if found
+  const currentProject: ProjectWithStringId | undefined = activeProject
+    ? {
+        ...activeProject,
+        id: activeProject.id.toString(), // Convert number ID to string
+      }
+    : undefined;
 
   if (loading) {
     return (

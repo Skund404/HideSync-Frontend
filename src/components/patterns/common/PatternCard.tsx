@@ -128,6 +128,12 @@ const PatternCard: React.FC<PatternCardProps> = ({ pattern, onClick }) => {
     }
   };
 
+  const handleAddToProject = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Navigate to the create from template page with this pattern's ID
+    navigate(`/projects/new/from-template/${pattern.id}`);
+  };
+
   const formatDate = (date: Date) => {
     return new Date(date).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -236,7 +242,7 @@ const PatternCard: React.FC<PatternCardProps> = ({ pattern, onClick }) => {
           )}
         </div>
         <div className='border-t border-stone-100 pt-3 flex justify-between'>
-          {/* Single View Details button */}
+          {/* View Details button */}
           <button
             className='text-sm text-amber-600 hover:text-amber-800 font-medium'
             onClick={(e) => {
@@ -245,6 +251,30 @@ const PatternCard: React.FC<PatternCardProps> = ({ pattern, onClick }) => {
             }}
           >
             View Details
+          </button>
+
+          {/* Add to Project button */}
+          <button
+            className='text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center'
+            onClick={handleAddToProject}
+            title='Create a new project using this pattern'
+            aria-label='Create a new project from this pattern'
+          >
+            <svg
+              xmlns='http://www.w3.org/2000/svg'
+              className='h-4 w-4 mr-1'
+              fill='none'
+              viewBox='0 0 24 24'
+              stroke='currentColor'
+            >
+              <path
+                strokeLinecap='round'
+                strokeLinejoin='round'
+                strokeWidth={2}
+                d='M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'
+              />
+            </svg>
+            Add to Project
           </button>
         </div>
       </div>

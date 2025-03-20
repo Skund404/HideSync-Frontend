@@ -1,38 +1,27 @@
 // src/context/ProjectContext.tsx
-
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import {
+  createProject as createProjectService,
+  deleteProject as deleteProjectService,
+  getProjects as getProjectsService,
+  updateProject as updateProjectService,
+} from '../services/mock/projects';
 import { ProjectStatus } from '../types/enums';
-
-// Define Project interface if it's not already defined elsewhere
-interface Project {
-  id: string;
-  name: string;
-  description: string;
-  status: ProjectStatus;
-  startDate: Date;
-  dueDate?: Date;
-  clientId?: string;
-  type: string;
-  skillLevel?: string;
-  notes?: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
+import { Project } from '../types/models';
 
 // Define the context interface
 interface ProjectContextType {
   projects: Project[];
   loading: boolean;
   error: string | null;
-  getProjectById: (id: string) => Project | undefined;
+  getProjectById: (id: number) => Project | undefined;
   getAllProjects: () => Project[];
   createProject: (
     project: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>
   ) => Promise<Project>;
-  updateProject: (id: string, updates: Partial<Project>) => Promise<Project>;
-  deleteProject: (id: string) => Promise<void>;
-  customers: { id: string; name: string }[]; // Simple customer structure
+  updateProject: (id: number, updates: Partial<Project>) => Promise<Project>;
+  deleteProject: (id: number) => Promise<void>;
+  customers: { id: number; name: string }[]; // Simple customer structure
 }
 
 // Create the context
@@ -46,11 +35,15 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Mock customer data
+  // Mock customer data - changed to numeric IDs
   const customers = [
-    { id: 'cust1', name: 'John Smith' },
-    { id: 'cust2', name: 'Emily Johnson' },
-    { id: 'cust3', name: 'Michael Brown' },
+    { id: 1, name: 'John Smith' },
+    { id: 2, name: 'Emily Johnson' },
+    { id: 3, name: 'Michael Williams' },
+    { id: 4, name: 'Sarah Davis' },
+    { id: 5, name: 'David Miller' },
+    { id: 6, name: 'Robert Taylor' },
+    { id: 7, name: 'Jennifer Anderson' },
   ];
 
   // Load initial projects
@@ -58,14 +51,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({
     const loadProjects = async () => {
       setLoading(true);
       try {
-        // In a real app, this would fetch from an API
-        const storedProjects = localStorage.getItem('projects');
-        if (storedProjects) {
-          setProjects(JSON.parse(storedProjects));
-        }
+        const projectsData = await getProjectsService();
+        setProjects(projectsData);
+        setError(null);
       } catch (err) {
-        setError('Failed to load projects');
-        console.error(err);
+        console.error('Failed to load projects:', err);
+        setError('Failed to load projects. Please try again.');
       } finally {
         setLoading(false);
       }
@@ -74,15 +65,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({
     loadProjects();
   }, []);
 
-  // Save projects to storage when changed
-  useEffect(() => {
-    if (projects.length > 0) {
-      localStorage.setItem('projects', JSON.stringify(projects));
-    }
-  }, [projects]);
-
   // Get project by ID
-  const getProjectById = (id: string): Project | undefined => {
+  const getProjectById = (id: number): Project | undefined => {
     return projects.find((project) => project.id === id);
   };
 
@@ -98,67 +82,66 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       setLoading(true);
 
-      const newProject: Project = {
+      // Ensure required fields
+      const projectToCreate = {
         ...projectData,
-        id: uuidv4(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        status: projectData.status || ProjectStatus.CONCEPT,
       };
 
+      const newProject = await createProjectService(
+        projectToCreate as Omit<Project, 'id'>
+      );
+
       setProjects((prev) => [...prev, newProject]);
-      setLoading(false);
       return newProject;
     } catch (err) {
-      setError('Failed to create project');
+      console.error('Failed to create project:', err);
+      throw new Error('Failed to create project. Please try again.');
+    } finally {
       setLoading(false);
-      throw err;
     }
   };
 
   // Update an existing project
   const updateProject = async (
-    id: string,
+    id: number,
     updates: Partial<Project>
   ): Promise<Project> => {
     try {
       setLoading(true);
 
-      const existingProject = getProjectById(id);
-      if (!existingProject) {
-        throw new Error('Project not found');
-      }
-
-      const updatedProject: Project = {
-        ...existingProject,
-        ...updates,
-        updatedAt: new Date(),
-      };
+      const updatedProject = await updateProjectService(id, updates);
 
       setProjects((prev) =>
         prev.map((project) => (project.id === id ? updatedProject : project))
       );
 
-      setLoading(false);
       return updatedProject;
     } catch (err) {
-      setError('Failed to update project');
+      console.error('Failed to update project:', err);
+      throw new Error('Failed to update project. Please try again.');
+    } finally {
       setLoading(false);
-      throw err;
     }
   };
 
   // Delete a project
-  const deleteProject = async (id: string): Promise<void> => {
+  const deleteProject = async (id: number): Promise<void> => {
     try {
       setLoading(true);
 
-      setProjects((prev) => prev.filter((project) => project.id !== id));
+      const success = await deleteProjectService(id);
 
-      setLoading(false);
+      if (success) {
+        setProjects((prev) => prev.filter((project) => project.id !== id));
+      } else {
+        throw new Error('Delete operation failed');
+      }
     } catch (err) {
-      setError('Failed to delete project');
+      console.error('Failed to delete project:', err);
+      throw new Error('Failed to delete project. Please try again.');
+    } finally {
       setLoading(false);
-      throw err;
     }
   };
 
