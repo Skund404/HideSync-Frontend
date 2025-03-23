@@ -28,9 +28,9 @@ const EBAY_TOKEN_URL = 'https://api.ebay.com/identity/v1/oauth2/token';
 // Production and Sandbox environments
 const ENVIRONMENTS = {
   PRODUCTION: {
-    API_GATEWAY: 'https://api.ebay.com',
-    AUTH_SERVER: 'https://auth.ebay.com/oauth2/authorize',
-    TOKEN_SERVER: 'https://api.ebay.com/identity/v1/oauth2/token',
+    API_GATEWAY: EBAY_API_URL, // Use the constant here
+    AUTH_SERVER: EBAY_AUTH_URL, // Use the constant here
+    TOKEN_SERVER: EBAY_TOKEN_URL, // Use the constant here
   },
   SANDBOX: {
     API_GATEWAY: 'https://api.sandbox.ebay.com',
@@ -1463,12 +1463,15 @@ export const updateEbayFulfillment = async (
     while (attempts < MAX_RETRIES && !success) {
       try {
         // Create the shipping fulfillment
-        await client.createShippingFulfillment(orderId, {
+        const fulfillmentData: EbayShippingFulfillment = {
+          fulfillmentId: crypto.randomBytes(8).toString('hex'), // Generate a unique ID
           lineItems,
           shippedDate: new Date().toISOString(),
           shippingCarrierCode: shippingProvider,
           trackingNumber,
-        });
+        };
+
+        await client.createShippingFulfillment(orderId, fulfillmentData);
 
         success = true;
       } catch (error) {
