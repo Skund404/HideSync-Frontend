@@ -1,3 +1,4 @@
+// src/components/financial/charts/ProductTypeChart.tsx
 import React, { useState } from 'react';
 import {
   Cell,
@@ -12,24 +13,41 @@ import {
   formatCurrency,
   formatPercentage,
 } from '../../../utils/financialHelpers';
+import LoadingSpinner from '../../common/LoadingSpinner';
+import ErrorMessage from '../../common/ErrorMessage';
 
 const COLORS = ['#d97706', '#0ea5e9', '#059669', '#7c3aed', '#ec4899'];
 
 const ProductTypeChart: React.FC = () => {
-  const { productMetrics, loading } = useFinancial();
+  const { productMetrics, loading, loadingState, error, refreshData } = useFinancial();
   const [activeMetric, setActiveMetric] = useState<'sales' | 'margin'>('sales');
 
-  if (loading) {
+  // Specific loading state for this component
+  if (loading || loadingState.productMetrics) {
     return (
       <div className='flex items-center justify-center h-full'>
-        <div className='text-center'>
-          <div className='inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-600'></div>
-          <p className='mt-2 text-sm text-stone-500'>Loading chart data...</p>
-        </div>
+        <LoadingSpinner
+          size="medium"
+          color="amber"
+          message="Loading product data..."
+        />
       </div>
     );
   }
 
+  // Handle error state with retry option
+  if (error) {
+    return (
+      <div className='flex items-center justify-center h-full'>
+        <ErrorMessage 
+          message="Unable to load product data. Please try again." 
+          onRetry={refreshData} 
+        />
+      </div>
+    );
+  }
+
+  // Handle empty data state
   if (!productMetrics.length) {
     return (
       <div className='flex items-center justify-center h-full'>
@@ -60,7 +78,7 @@ const ProductTypeChart: React.FC = () => {
           </p>
           <p className='text-sm'>
             <span className='text-stone-600'>Units: </span>
-            {data.quantity}
+            {data.quantity || 'N/A'}
           </p>
           <p className='text-sm'>
             <span className='text-stone-600'>% of Total: </span>

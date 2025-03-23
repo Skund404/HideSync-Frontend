@@ -1,3 +1,4 @@
+// src/components/sales/OrderDetail.tsx
 import React, { useState } from 'react';
 import { useSales } from '../../context/SalesContext';
 import {
@@ -183,7 +184,7 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ orderId, onClose }) => {
                   <span>
                     $
                     {(
-                      sale.total -
+                      sale.totalAmount -
                       (sale.shipping || 0) -
                       (sale.taxes || 0)
                     ).toFixed(2)}
@@ -209,7 +210,7 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ orderId, onClose }) => {
                 )}
                 <div className='flex justify-between font-bold mt-2 pt-2 border-t'>
                   <span>Total:</span>
-                  <span>${sale.total.toFixed(2)}</span>
+                  <span>${sale.totalAmount.toFixed(2)}</span>
                 </div>
                 {sale.netRevenue !== undefined && (
                   <div className='flex justify-between text-green-600 mt-1'>

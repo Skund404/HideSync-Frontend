@@ -1,4 +1,5 @@
 // src/pages/Dashboard.tsx
+import React from 'react';
 import ProjectTimelineWidget from '@/components/dashboard/ProjectTimelineWidget';
 import PurchaseOrderStatsCard from '@/components/dashboard/PurchaseOrderStatsCard';
 import PurchaseTimelineWidget from '@/components/dashboard/PurchaseTimelineWidget';
@@ -6,14 +7,13 @@ import SalesStatsCard from '@/components/dashboard/SalesStatsCard';
 import StorageSummaryWidget from '@/components/dashboard/StorageSummaryWidget';
 import SupplierActivityWidget from '@/components/dashboard/SupplierActivityWidget';
 import SupplierStatsCard from '@/components/dashboard/SupplierStatsCard';
-import TopProductsWidget from '@/components/dashboard/TopProductsWidget'; // Add this import
+import TopProductsWidget from '@/components/dashboard/TopProductsWidget';
 import { ProjectProvider } from '@/context/ProjectContext';
 import { PurchaseOrderProvider } from '@/context/PurchaseContext';
 import { PurchaseTimelineProvider } from '@/context/PurchaseTimelineContext';
 import { SalesProvider } from '@/context/SalesContext';
 import { SupplierProvider } from '@/context/SupplierContext';
-import { Wrench } from 'lucide-react';
-import React from 'react';
+import { Wrench, RefreshCw } from 'lucide-react';
 import PickingListStatsCard from '../components/dashboard/PickingListStatsCard';
 import RecurringProjectStatsCard from '../components/dashboard/RecurringProjectStatsCard';
 import StatCard from '../components/dashboard/StatCard';
@@ -21,6 +21,9 @@ import TemplateStatsCard from '../components/dashboard/TemplateStatsCard';
 import ToolDashboardCards from '../components/dashboard/ToolDashboardCards';
 import { ToolProvider, useTools } from '../context/ToolContext';
 import { useDashboard } from '../hooks/useDashboard';
+import LoadingSpinner from '@/components/common/LoadingSpinner';
+import ErrorMessage from '@/components/common/ErrorMessage';
+import { handleApiError } from '@/utils/errorHandler';
 
 // Tool Stats component using hooks directly
 const ToolStatsCard = () => {
@@ -42,18 +45,43 @@ const ToolStatsCard = () => {
 };
 
 const Dashboard: React.FC = () => {
-  const { data: safeData, loading, error } = useDashboard();
+  const { data: safeData, loading, error, refresh } = useDashboard();
 
   if (loading) {
     return (
       <div className='flex justify-center items-center h-full'>
-        Loading dashboard data...
+        <LoadingSpinner message="Loading dashboard data..." />
       </div>
     );
   }
 
-  if (error || !safeData) {
-    return <div className='text-red-500'>Error loading dashboard data</div>;
+  if (error) {
+    // Convert Error object to string for ErrorMessage component
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    return (
+      <ErrorMessage 
+        message={errorMessage} 
+        onRetry={refresh}
+      />
+    );
+  }
+
+  if (!safeData) {
+    return (
+      <div className='flex justify-center items-center h-full'>
+        <div className="text-center">
+          <p className="text-lg text-stone-500">No dashboard data available</p>
+          <button 
+            className="mt-4 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-md flex items-center gap-2"
+            onClick={refresh}
+          >
+            <RefreshCw className="h-4 w-4" />
+            Refresh Data
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -80,7 +108,7 @@ const Dashboard: React.FC = () => {
             </svg>
           }
           color='amber'
-          detail='3 due this week'
+          detail={`${safeData.upcomingDeadlines?.length || 0} due this week`}
           trend={{ value: '10%', isPositive: true }}
           percentage={75}
         />
@@ -130,7 +158,7 @@ const Dashboard: React.FC = () => {
             </svg>
           }
           color='red'
-          detail='Includes 2 critical items'
+          detail={`Includes ${safeData.materialStockSummary?.filter(m => m.status === 'low').length || 0} critical items`}
           percentage={30}
         />
 

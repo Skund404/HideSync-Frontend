@@ -2,11 +2,15 @@
 //
 // A form component for adding and editing tools.
 // Used in the Tool Management module for creating and updating tool records.
+// Updated to work with API integration.
 
+import ErrorMessage from '@/components/common/ErrorMessage';
+import LoadingSpinner from '@/components/common/LoadingSpinner';
+import { useTools } from '@/context/ToolContext';
+import useToast from '@/hooks/useToast';
 import { Tool, ToolCategory, ToolStatus } from '@/types/toolType';
-import { useTools } from '@context/ToolContext';
 import { X } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 interface ToolFormProps {
   isOpen: boolean;
@@ -15,34 +19,58 @@ interface ToolFormProps {
 }
 
 const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
-  const { addTool, updateTool } = useTools();
+  const { addTool, updateTool } = useTools(); // Removed unused 'loading' variable
+  const { showToast } = useToast();
 
-  // Default values for a new tool
-  const defaultValues = {
-    name: '',
-    description: '',
-    category: ToolCategory.CUTTING,
-    brand: '',
-    model: '',
-    serialNumber: '',
-    purchaseDate: new Date().toISOString().split('T')[0],
-    purchasePrice: 0,
-    supplier: '',
-    specifications: '',
-    status: ToolStatus.IN_STOCK,
-    lastMaintenance: new Date().toISOString().split('T')[0],
-    nextMaintenance: new Date(new Date().setDate(new Date().getDate() + 180))
-      .toISOString()
-      .split('T')[0],
-    maintenanceInterval: 180, // 6 months default
-    location: 'Main Workshop',
-    image: '/api/placeholder/80/80',
-  };
+  // Form submission state
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // Default values for a new tool - wrapped in useMemo to prevent recreation on every render
+  const defaultValues = useMemo(
+    () =>
+      ({
+        name: '',
+        description: '',
+        category: ToolCategory.CUTTING,
+        brand: '',
+        model: '',
+        serialNumber: '',
+        purchaseDate: new Date().toISOString().split('T')[0],
+        purchasePrice: 0,
+        supplier: '',
+        specifications: '',
+        status: ToolStatus.IN_STOCK,
+        lastMaintenance: new Date().toISOString().split('T')[0],
+        nextMaintenance: new Date(
+          new Date().setDate(new Date().getDate() + 180)
+        )
+          .toISOString()
+          .split('T')[0],
+        maintenanceInterval: 180, // 6 months default
+        location: 'Main Workshop',
+        image: '/api/placeholder/80/80',
+        // Adding the required fields from the Tool interface that were missing
+        checkedOutTo: '',
+        checkedOutDate: '',
+        dueDate: '',
+      } as Omit<Tool, 'id'>),
+    []
+  ); // Empty dependency array since none of these values depend on props
 
   // Initialize form state
-  const [formData, setFormData] = useState<Omit<Tool, 'id'>>(
-    editTool || defaultValues
-  );
+  const [formData, setFormData] = useState<Omit<Tool, 'id'>>(defaultValues);
+
+  // Update form when editTool changes
+  useEffect(() => {
+    if (editTool) {
+      // Use destructuring to only include fields we need
+      const { id, ...toolWithoutId } = editTool;
+      setFormData(toolWithoutId);
+    } else {
+      setFormData(defaultValues);
+    }
+  }, [editTool, isOpen, defaultValues]);
 
   // Handle input changes
   const handleInputChange = (
@@ -66,22 +94,53 @@ const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
     }
   };
 
-  // Handle form submission
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (editTool) {
-      // Update existing tool
-      updateTool({
-        ...editTool,
-        ...formData,
-      });
-    } else {
-      // Add new tool
-      addTool(formData);
+  // Validate form data
+  const validateForm = (): boolean => {
+    if (!formData.name.trim()) {
+      setFormError('Tool name is required');
+      return false;
     }
 
-    onClose();
+    // Add additional validation as needed
+
+    return true;
+  };
+
+  // Handle form submission
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Validate form
+    if (!validateForm()) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFormError(null);
+
+    try {
+      if (editTool) {
+        // Update existing tool
+        await updateTool({
+          ...editTool,
+          ...formData,
+        });
+        showToast('success', 'Tool updated successfully');
+      } else {
+        // Add new tool
+        await addTool(formData);
+        showToast('success', 'Tool added successfully');
+      }
+
+      onClose();
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to save tool';
+      setFormError(errorMessage);
+      showToast('error', errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // If the modal is not open, don't render
@@ -98,6 +157,7 @@ const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
           <button
             onClick={onClose}
             className='p-2 text-stone-500 hover:text-stone-700 rounded-full'
+            disabled={isSubmitting}
           >
             <X className='w-5 h-5' />
           </button>
@@ -105,6 +165,24 @@ const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className='p-6'>
+          {/* Error display */}
+          {formError && (
+            <div className='mb-6'>
+              <ErrorMessage message={formError} />
+            </div>
+          )}
+
+          {/* Loading indicator */}
+          {isSubmitting && (
+            <div className='mb-6'>
+              <LoadingSpinner
+                size='small'
+                color='amber'
+                message={`${editTool ? 'Updating' : 'Adding'} tool...`}
+              />
+            </div>
+          )}
+
           <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
             {/* Basic Information Section */}
             <div className='md:col-span-2'>
@@ -123,6 +201,7 @@ const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
                     required
+                    disabled={isSubmitting}
                   />
                 </div>
 
@@ -136,6 +215,7 @@ const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
                     required
+                    disabled={isSubmitting}
                   >
                     {Object.values(ToolCategory).map((category) => (
                       <option key={category} value={category}>
@@ -155,6 +235,7 @@ const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
                     rows={3}
+                    disabled={isSubmitting}
                   />
                 </div>
               </div>
@@ -176,6 +257,7 @@ const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
                     value={formData.brand}
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
+                    disabled={isSubmitting}
                   />
                 </div>
 
@@ -189,6 +271,7 @@ const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
                     value={formData.model}
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
+                    disabled={isSubmitting}
                   />
                 </div>
 
@@ -202,6 +285,7 @@ const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
                     value={formData.serialNumber}
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
+                    disabled={isSubmitting}
                   />
                 </div>
 
@@ -215,6 +299,7 @@ const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
                     value={formData.supplier}
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
+                    disabled={isSubmitting}
                   />
                 </div>
 
@@ -228,6 +313,7 @@ const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
                     value={formData.purchaseDate}
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
+                    disabled={isSubmitting}
                   />
                 </div>
 
@@ -243,6 +329,7 @@ const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
                     step='0.01'
                     min='0'
+                    disabled={isSubmitting}
                   />
                 </div>
               </div>
@@ -264,6 +351,7 @@ const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
                     required
+                    disabled={isSubmitting}
                   >
                     {Object.values(ToolStatus).map((status) => (
                       <option key={status} value={status}>
@@ -284,6 +372,7 @@ const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
                     required
+                    disabled={isSubmitting}
                   />
                 </div>
 
@@ -297,6 +386,7 @@ const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
                     value={formData.lastMaintenance}
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
+                    disabled={isSubmitting}
                   />
                 </div>
 
@@ -310,6 +400,7 @@ const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
                     value={formData.nextMaintenance}
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
+                    disabled={isSubmitting}
                   />
                 </div>
 
@@ -324,6 +415,7 @@ const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
                     min='1'
+                    disabled={isSubmitting}
                   />
                 </div>
               </div>
@@ -340,6 +432,7 @@ const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
                 onChange={handleInputChange}
                 className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
                 rows={4}
+                disabled={isSubmitting}
               />
             </div>
           </div>
@@ -350,14 +443,20 @@ const ToolForm: React.FC<ToolFormProps> = ({ isOpen, onClose, editTool }) => {
               type='button'
               onClick={onClose}
               className='px-4 py-2 border border-stone-300 rounded-md text-stone-700 hover:bg-stone-50'
+              disabled={isSubmitting}
             >
               Cancel
             </button>
             <button
               type='submit'
               className='px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-md'
+              disabled={isSubmitting}
             >
-              {editTool ? 'Update Tool' : 'Add Tool'}
+              {isSubmitting
+                ? 'Saving...'
+                : editTool
+                ? 'Update Tool'
+                : 'Add Tool'}
             </button>
           </div>
         </form>

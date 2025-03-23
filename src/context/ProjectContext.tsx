@@ -1,27 +1,30 @@
 // src/context/ProjectContext.tsx
+
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import {
-  createProject as createProjectService,
-  deleteProject as deleteProjectService,
-  getProjects as getProjectsService,
-  updateProject as updateProjectService,
-} from '../services/mock/projects';
-import { ProjectStatus } from '../types/enums';
-import { Project } from '../types/models';
+import { ProjectStatus } from '@/types/enums';
+import { Project } from '@/types/projectTimeline';
+import * as projectService from '@/services/project-service';
+import { ApiError } from '@/services/api-client';
 
 // Define the context interface
 interface ProjectContextType {
   projects: Project[];
   loading: boolean;
   error: string | null;
-  getProjectById: (id: number) => Project | undefined;
-  getAllProjects: () => Project[];
+  getProjectById: (id: string) => Project | undefined;
+  getAllProjects: (filters?: {
+    status?: ProjectStatus;
+    customerId?: number;
+    searchQuery?: string;
+    dateRange?: { start?: Date; end?: Date };
+  }) => Promise<Project[]>;
   createProject: (
-    project: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>
+    project: Omit<Project, 'id'>
   ) => Promise<Project>;
-  updateProject: (id: number, updates: Partial<Project>) => Promise<Project>;
-  deleteProject: (id: number) => Promise<void>;
-  customers: { id: number; name: string }[]; // Simple customer structure
+  updateProject: (id: string, updates: Partial<Project>) => Promise<Project>;
+  deleteProject: (id: string) => Promise<void>;
+  updateProjectStatus: (id: string, status: ProjectStatus) => Promise<Project>;
+  customers: { id: string; name: string }[];
 }
 
 // Create the context
@@ -32,71 +35,83 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Mock customer data - changed to numeric IDs
-  const customers = [
-    { id: 1, name: 'John Smith' },
-    { id: 2, name: 'Emily Johnson' },
-    { id: 3, name: 'Michael Williams' },
-    { id: 4, name: 'Sarah Davis' },
-    { id: 5, name: 'David Miller' },
-    { id: 6, name: 'Robert Taylor' },
-    { id: 7, name: 'Jennifer Anderson' },
-  ];
-
   // Load initial projects
   useEffect(() => {
-    const loadProjects = async () => {
+    const loadData = async () => {
       setLoading(true);
       try {
-        const projectsData = await getProjectsService();
-        setProjects(projectsData);
+        // Fetch projects from API
+        const fetchedProjects = await projectService.getProjects();
+        setProjects(fetchedProjects);
+        
+        // Fetch customers
+        const fetchedCustomers = await projectService.getCustomers();
+        setCustomers(fetchedCustomers);
+        
         setError(null);
       } catch (err) {
-        console.error('Failed to load projects:', err);
-        setError('Failed to load projects. Please try again.');
+        const apiError = err as ApiError;
+        setError(apiError.message || 'Failed to load projects');
+        console.error('Error loading projects:', err);
       } finally {
         setLoading(false);
       }
     };
 
-    loadProjects();
+    loadData();
   }, []);
 
   // Get project by ID
-  const getProjectById = (id: number): Project | undefined => {
+  const getProjectById = (id: string): Project | undefined => {
     return projects.find((project) => project.id === id);
   };
 
-  // Get all projects
-  const getAllProjects = (): Project[] => {
-    return projects;
+  // Get all projects with optional filters
+  const getAllProjects = async (filters?: {
+    status?: ProjectStatus;
+    customerId?: number;
+    searchQuery?: string;
+    dateRange?: { start?: Date; end?: Date };
+  }): Promise<Project[]> => {
+    try {
+      setLoading(true);
+      const fetchedProjects = await projectService.getProjects(filters);
+      
+      // Update local state
+      if (!filters) {
+        setProjects(fetchedProjects);
+      }
+      
+      return fetchedProjects;
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to fetch projects');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Create a new project
   const createProject = async (
-    projectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>
+    projectData: Omit<Project, 'id'>
   ): Promise<Project> => {
     try {
       setLoading(true);
-
-      // Ensure required fields
-      const projectToCreate = {
-        ...projectData,
-        status: projectData.status || ProjectStatus.CONCEPT,
-      };
-
-      const newProject = await createProjectService(
-        projectToCreate as Omit<Project, 'id'>
-      );
-
+      const newProject = await projectService.createProject(projectData);
+      
+      // Update local state
       setProjects((prev) => [...prev, newProject]);
+      
       return newProject;
     } catch (err) {
-      console.error('Failed to create project:', err);
-      throw new Error('Failed to create project. Please try again.');
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to create project');
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -104,42 +119,64 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({
 
   // Update an existing project
   const updateProject = async (
-    id: number,
+    id: string,
     updates: Partial<Project>
   ): Promise<Project> => {
     try {
       setLoading(true);
-
-      const updatedProject = await updateProjectService(id, updates);
-
+      const updatedProject = await projectService.updateProject(id, updates);
+      
+      // Update local state
       setProjects((prev) =>
         prev.map((project) => (project.id === id ? updatedProject : project))
       );
-
+      
       return updatedProject;
     } catch (err) {
-      console.error('Failed to update project:', err);
-      throw new Error('Failed to update project. Please try again.');
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to update project');
+      throw err;
     } finally {
       setLoading(false);
     }
   };
 
   // Delete a project
-  const deleteProject = async (id: number): Promise<void> => {
+  const deleteProject = async (id: string): Promise<void> => {
     try {
       setLoading(true);
-
-      const success = await deleteProjectService(id);
-
-      if (success) {
-        setProjects((prev) => prev.filter((project) => project.id !== id));
-      } else {
-        throw new Error('Delete operation failed');
-      }
+      await projectService.deleteProject(id);
+      
+      // Update local state
+      setProjects((prev) => prev.filter((project) => project.id !== id));
     } catch (err) {
-      console.error('Failed to delete project:', err);
-      throw new Error('Failed to delete project. Please try again.');
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to delete project');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Update project status
+  const updateProjectStatus = async (
+    id: string,
+    status: ProjectStatus
+  ): Promise<Project> => {
+    try {
+      setLoading(true);
+      const updatedProject = await projectService.updateProjectStatus(id, status);
+      
+      // Update local state
+      setProjects((prev) =>
+        prev.map((project) => (project.id === id ? updatedProject : project))
+      );
+      
+      return updatedProject;
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to update project status');
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -155,6 +192,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({
     createProject,
     updateProject,
     deleteProject,
+    updateProjectStatus,
     customers,
   };
 

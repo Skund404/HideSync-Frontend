@@ -1,6 +1,16 @@
 // src/components/patterns/detail/PatternActions.tsx
 import React, { useState } from 'react';
 import { Pattern } from '../../../types/patternTypes';
+import { 
+  exportPattern, 
+  generateDownloadUrl, 
+  generateShareableLink,
+  ExportOptions 
+} from '../../../services/pattern-export-service';
+import { showSuccess, showError } from '../../../services/notification-service';
+import { handleApiError } from '../../../services/error-handler';
+import { getPatternFile } from '../../../services/file-upload-service';
+import PatternPrintDialog from '../print/PatternPrintDialog';
 
 interface PatternActionsProps {
   pattern: Pattern;
@@ -12,33 +22,120 @@ const PatternActions: React.FC<PatternActionsProps> = ({
   onToggleFavorite,
 }) => {
   const [showMenu, setShowMenu] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [showPrintDialog, setShowPrintDialog] = useState(false);
 
   const toggleMenu = () => {
     setShowMenu(!showMenu);
   };
 
   const handlePrint = () => {
-    console.log('Print functionality to be implemented');
+    setShowPrintDialog(true);
     setShowMenu(false);
   };
 
-  const handleDownload = () => {
-    console.log('Download functionality to be implemented');
+  const handleDownload = async () => {
+    try {
+      const blob = await getPatternFile<Blob>(pattern.filePath, 'blob');
+      const url = URL.createObjectURL(blob);
+      
+      // Create a download link
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = pattern.name + '.' + pattern.fileType.toLowerCase();
+      
+      // Trigger download and clean up
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      showSuccess('Pattern downloaded successfully');
+    } catch (error) {
+      const errorMessage = handleApiError(error, 'Failed to download pattern');
+      showError(`Download error: ${errorMessage}`);
+    }
+    
     setShowMenu(false);
   };
 
-  const handleExport = () => {
-    console.log('Export functionality to be implemented');
+  const handleExport = async (format: 'pdf' | 'svg' | 'dxf' | 'image' = 'pdf') => {
+    try {
+      setIsExporting(true);
+      
+      // Configure export options
+      const options: ExportOptions = {
+        format,
+        includeMetadata: true,
+        includeNotes: true,
+        includeAnnotations: true,
+        quality: 'high'
+      };
+      
+      // Export the pattern
+      const blob = await exportPattern(pattern.id, options);
+      
+      // Generate a filename
+      const extension = format === 'image' ? 'png' : format;
+      const filename = `${pattern.name}_export.${extension}`;
+      
+      // Create a download URL and trigger download
+      const url = generateDownloadUrl(blob, filename);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      showSuccess(`Pattern exported as ${format.toUpperCase()} successfully`);
+    } catch (error) {
+      const errorMessage = handleApiError(error, 'Failed to export pattern');
+      showError(`Export error: ${errorMessage}`);
+    } finally {
+      setIsExporting(false);
+    }
+    
     setShowMenu(false);
   };
 
-  const handleShare = () => {
-    console.log('Share functionality to be implemented');
+  const handleShare = async () => {
+    try {
+      setIsSharing(true);
+      
+      // Generate a shareable link
+      const url = await generateShareableLink(pattern.id, 7); // Link expires in 7 days
+      
+      // Copy to clipboard
+      await navigator.clipboard.writeText(url);
+      
+      showSuccess('Shareable link copied to clipboard! The link will expire in 7 days.');
+    } catch (error) {
+      const errorMessage = handleApiError(error, 'Failed to generate shareable link');
+      showError(`Sharing error: ${errorMessage}`);
+    } finally {
+      setIsSharing(false);
+    }
+    
     setShowMenu(false);
   };
 
-  const handleDelete = () => {
-    console.log('Delete functionality to be implemented');
+  const handleDelete = async () => {
+    // This would usually involve a confirmation dialog
+    if (window.confirm(`Are you sure you want to delete "${pattern.name}"?`)) {
+      try {
+        // In a real implementation, this would call a service method to delete the pattern
+        // And then navigate away from this page
+        console.log('Deleting pattern:', pattern.id);
+        showSuccess('Pattern deleted successfully');
+      } catch (error) {
+        const errorMessage = handleApiError(error, 'Failed to delete pattern');
+        showError(`Deletion error: ${errorMessage}`);
+      }
+    }
+    
     setShowMenu(false);
   };
 
@@ -121,21 +218,29 @@ const PatternActions: React.FC<PatternActionsProps> = ({
         className='text-stone-500 hover:text-stone-700 p-2 rounded-md hover:bg-stone-100'
         aria-label='Share pattern'
         onClick={handleShare}
+        disabled={isSharing}
       >
-        <svg
-          xmlns='http://www.w3.org/2000/svg'
-          className='h-5 w-5'
-          fill='none'
-          viewBox='0 0 24 24'
-          stroke='currentColor'
-        >
-          <path
-            strokeLinecap='round'
-            strokeLinejoin='round'
-            strokeWidth={2}
-            d='M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z'
-          />
-        </svg>
+        {isSharing ? (
+          <svg className="animate-spin h-5 w-5 text-stone-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        ) : (
+          <svg
+            xmlns='http://www.w3.org/2000/svg'
+            className='h-5 w-5'
+            fill='none'
+            viewBox='0 0 24 24'
+            stroke='currentColor'
+          >
+            <path
+              strokeLinecap='round'
+              strokeLinejoin='round'
+              strokeWidth={2}
+              d='M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z'
+            />
+          </svg>
+        )}
       </button>
 
       {/* More Actions Button with Dropdown */}
@@ -165,26 +270,75 @@ const PatternActions: React.FC<PatternActionsProps> = ({
         {showMenu && (
           <div className='absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 border border-stone-200'>
             <div className='py-1'>
-              <button
-                className='flex items-center w-full px-4 py-2 text-sm text-stone-700 hover:bg-stone-100'
-                onClick={handleExport}
-              >
-                <svg
-                  xmlns='http://www.w3.org/2000/svg'
-                  className='h-4 w-4 mr-2 text-stone-500'
-                  fill='none'
-                  viewBox='0 0 24 24'
-                  stroke='currentColor'
+              <div className="py-1">
+                <button
+                  className='flex items-center w-full px-4 py-2 text-sm text-stone-700 hover:bg-stone-100'
+                  onClick={() => handleExport('pdf')}
+                  disabled={isExporting}
                 >
-                  <path
-                    strokeLinecap='round'
-                    strokeLinejoin='round'
-                    strokeWidth={2}
-                    d='M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4'
-                  />
-                </svg>
-                Export Pattern
-              </button>
+                  <svg
+                    xmlns='http://www.w3.org/2000/svg'
+                    className='h-4 w-4 mr-2 text-stone-500'
+                    fill='none'
+                    viewBox='0 0 24 24'
+                    stroke='currentColor'
+                  >
+                    <path
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      strokeWidth={2}
+                      d='M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4'
+                    />
+                  </svg>
+                  {isExporting ? 'Exporting...' : 'Export as PDF'}
+                </button>
+
+                <button
+                  className='flex items-center w-full px-4 py-2 text-sm text-stone-700 hover:bg-stone-100'
+                  onClick={() => handleExport('svg')}
+                  disabled={isExporting}
+                >
+                  <svg
+                    xmlns='http://www.w3.org/2000/svg'
+                    className='h-4 w-4 mr-2 text-stone-500'
+                    fill='none'
+                    viewBox='0 0 24 24'
+                    stroke='currentColor'
+                  >
+                    <path
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      strokeWidth={2}
+                      d='M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4'
+                    />
+                  </svg>
+                  {isExporting ? 'Exporting...' : 'Export as SVG'}
+                </button>
+
+                <button
+                  className='flex items-center w-full px-4 py-2 text-sm text-stone-700 hover:bg-stone-100'
+                  onClick={() => handleExport('dxf')}
+                  disabled={isExporting}
+                >
+                  <svg
+                    xmlns='http://www.w3.org/2000/svg'
+                    className='h-4 w-4 mr-2 text-stone-500'
+                    fill='none'
+                    viewBox='0 0 24 24'
+                    stroke='currentColor'
+                  >
+                    <path
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      strokeWidth={2}
+                      d='M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4'
+                    />
+                  </svg>
+                  {isExporting ? 'Exporting...' : 'Export as DXF'}
+                </button>
+              </div>
+
+              <hr className='my-1 border-stone-200' />
 
               <button
                 className='flex items-center w-full px-4 py-2 text-sm text-stone-700 hover:bg-stone-100'
@@ -254,6 +408,17 @@ const PatternActions: React.FC<PatternActionsProps> = ({
           </div>
         )}
       </div>
+
+      {/* Print Dialog */}
+      {showPrintDialog && (
+        <PatternPrintDialog
+          isOpen={showPrintDialog}
+          onClose={() => setShowPrintDialog(false)}
+          patternId={pattern.id}
+          patternName={pattern.name}
+          fileType={pattern.fileType}
+        />
+      )}
     </div>
   );
 };

@@ -1,17 +1,29 @@
-import React, { useContext, useEffect, useState } from 'react';
+// src/pages/PickingListPages.tsx
+import React, { useEffect, useState } from 'react';
 import { Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import ErrorMessage from '../components/common/ErrorMessage';
+import LoadingSpinner from '../components/common/LoadingSpinner';
 import PickingListManagement from '../components/projects/PickingListManagement';
-import PickingListContext from '../context/PickingListContext';
-import {
-  PickingList,
-  PickingListItem,
-  PickingListStatus,
-} from '../types/pickinglist';
+import { usePickingLists } from '../context/PickingListContext';
+import { PickingListStatus } from '../types/enums';
+import { PickingList } from '../types/pickinglist';
 
-// Define the extended type to match the context implementation
-type PickingListWithItems = PickingList & {
-  items?: PickingListItem[];
-};
+// Define custom interface for picking list items as they appear in the API response
+interface ApiPickingListItem {
+  id: string;
+  pickingListId: string;
+  materialId: string;
+  componentId?: string;
+  quantityPicked: number;
+  quantityOrdered: number;
+  status: string;
+  notes?: string;
+}
+
+// Define the type for the picking list with items from API
+interface PickingListWithItems extends Omit<PickingList, 'items'> {
+  items?: ApiPickingListItem[];
+}
 
 const PickingListPages: React.FC = () => {
   const { id } = useParams<{ id?: string }>();
@@ -21,105 +33,103 @@ const PickingListPages: React.FC = () => {
   const [pickingList, setPickingList] = useState<PickingListWithItems | null>(
     null
   );
-  const [pickingItems, setPickingItems] = useState<PickingListItem[]>([]);
+  const [pickingItems, setPickingItems] = useState<ApiPickingListItem[]>([]);
   const [completedItems, setCompletedItems] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-  const pickingListContext = useContext(PickingListContext);
+  const {
+    getPickingListById,
+    updatePickingListItemQuantity,
+    markPickingListComplete,
+    createPickingList,
+  } = usePickingLists();
 
   useEffect(() => {
-    if (!pickingListContext) {
-      console.error('Picking List Context not available');
-      return;
-    }
-
     const loadData = async () => {
       setLoading(true);
+      setError(null);
 
       try {
         if (id && id !== 'new') {
-          // Get the picking list
-          const fetchedList = pickingListContext.getPickingListById(id);
+          // Get the picking list from API
+          const fetchedList = await getPickingListById(id);
           if (fetchedList) {
-            // Save the basic list data
-            setPickingList(fetchedList as PickingListWithItems);
+            // Cast to our type that includes items
+            const listWithItems =
+              fetchedList as unknown as PickingListWithItems;
+            setPickingList(listWithItems);
 
-            // Get items if they exist (using the type assertion pattern from your context)
-            const listWithItems = fetchedList as PickingListWithItems;
+            // Extract items if they exist
             if (listWithItems.items) {
               setPickingItems(listWithItems.items);
 
               // Initialize completed items
               const completed = listWithItems.items
-                .filter((item) => item.status === 'complete')
+                .filter((item) => item.quantityPicked >= item.quantityOrdered)
                 .map((item) => item.id);
               setCompletedItems(completed);
             } else {
-              // Handle the case where items might need to be loaded separately
               setPickingItems([]);
               setCompletedItems([]);
             }
           } else {
-            console.error(`Picking list with ID ${id} not found`);
-            navigate('/picking-lists');
+            setError(`Picking list with ID ${id} not found`);
+            // Navigate away after a delay
+            setTimeout(() => navigate('/picking-lists'), 2000);
           }
         }
-      } catch (error) {
-        console.error('Error loading data:', error);
+      } catch (err) {
+        console.error('Error loading picking list data:', err);
+        setError('Failed to load picking list data. Please try again.');
       } finally {
         setLoading(false);
       }
     };
 
     loadData();
-  }, [id, pickingListContext, navigate]);
-
-  if (!pickingListContext) {
-    return <div>Error: Picking List Context not available</div>;
-  }
+  }, [id, getPickingListById, navigate]);
 
   // Handle toggling item completion
-  const handleItemToggle = (itemId: string) => {
+  const handleItemToggle = async (itemId: string) => {
+    if (!pickingList) return;
+
     // Find the item to update
     const item = pickingItems.find((item) => item.id === itemId);
-    if (!item || !pickingList) return;
+    if (!item) return;
 
-    // Update completed items state
-    setCompletedItems((prev) => {
-      if (prev.includes(itemId)) {
-        return prev.filter((id) => id !== itemId);
-      } else {
-        return [...prev, itemId];
-      }
-    });
-
-    // Determine new status with correct typing
-    const newStatus =
-      item.status === 'complete' ? ('pending' as const) : ('complete' as const);
-    const newPickedQuantity = newStatus === 'complete' ? item.quantity : 0;
-
-    // Create updated items array with proper typing
-    const updatedItems = pickingItems.map((i) =>
-      i.id === itemId
-        ? { ...i, status: newStatus, pickedQuantity: newPickedQuantity }
-        : i
-    );
-
-    // Update local state
-    setPickingItems(updatedItems);
-
-    // Since 'items' isn't in the PickingList type, we need a different approach
     try {
-      // For now, we'll just update the picking list status if all items are complete
-      const allComplete = updatedItems.every(
-        (item) => item.status === 'complete'
+      // Determine new picked quantity
+      const newPickedQuantity =
+        item.quantityPicked >= item.quantityOrdered
+          ? 0 // If already fully picked, set to 0
+          : item.quantityOrdered; // Otherwise mark as fully picked
+
+      // Update via API
+      const updatedList = await updatePickingListItemQuantity(
+        pickingList.id,
+        itemId,
+        newPickedQuantity
       );
-      if (allComplete) {
-        pickingListContext.updatePickingList(pickingList.id, {
-          status: PickingListStatus.COMPLETED,
-        });
+
+      // Update local state with updated list from API
+      if (updatedList) {
+        // Cast to our type
+        const updatedListWithItems =
+          updatedList as unknown as PickingListWithItems;
+        setPickingList(updatedListWithItems);
+
+        if (updatedListWithItems.items) {
+          setPickingItems(updatedListWithItems.items);
+          setCompletedItems(
+            updatedListWithItems.items
+              .filter((item) => item.quantityPicked >= item.quantityOrdered)
+              .map((item) => item.id)
+          );
+        }
       }
-    } catch (error) {
-      console.error('Error toggling item status:', error);
+    } catch (err) {
+      console.error('Error updating picking list item:', err);
+      setError('Failed to update item. Please try again.');
     }
   };
 
@@ -128,11 +138,43 @@ const PickingListPages: React.FC = () => {
     if (!pickingList) return;
 
     try {
-      // Use the markPickingListComplete method from your context
-      await pickingListContext.markPickingListComplete(pickingList.id);
-      navigate('/picking-lists');
-    } catch (error) {
-      console.error('Error completing picking list:', error);
+      // Mark the picking list as complete via API
+      const completedList = await markPickingListComplete(pickingList.id);
+
+      // Update the UI with the completed list (cast to our type)
+      setPickingList(completedList as unknown as PickingListWithItems);
+
+      // Show success message and navigate away
+      setTimeout(() => {
+        navigate('/picking-lists');
+      }, 1500);
+    } catch (err) {
+      console.error('Error completing picking list:', err);
+      setError('Failed to complete picking list. Please try again.');
+    }
+  };
+
+  // Handle creating a new picking list
+  const handleCreatePickingList = async (formData: any) => {
+    try {
+      setLoading(true);
+
+      // Create picking list with only the properties expected by the API
+      const newPickingListData = {
+        projectId: formData.projectId,
+        status: PickingListStatus.PENDING as any, // Type assertion to bypass enum conflict
+        notes: formData.notes || '',
+      };
+
+      const newPickingList = await createPickingList(newPickingListData);
+
+      // Navigate to the new picking list
+      navigate(`/picking-lists/${newPickingList.id}`);
+    } catch (err) {
+      console.error('Error creating picking list:', err);
+      setError('Failed to create picking list. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -147,6 +189,31 @@ const PickingListPages: React.FC = () => {
             <div>
               <h1 className='text-2xl font-bold mb-6'>Create Picking List</h1>
               {/* Create form would go here */}
+              <div className='bg-white shadow-sm rounded-lg p-6'>
+                <p className='text-center text-gray-500 italic'>
+                  Picking list creation form to be implemented here
+                </p>
+                <div className='flex justify-end mt-6'>
+                  <button
+                    onClick={() => navigate('/picking-lists')}
+                    className='px-4 py-2 border border-gray-300 text-gray-700 rounded-md mr-2'
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() =>
+                      handleCreatePickingList({
+                        projectId: 'sample-project-id',
+                        items: [],
+                        notes: 'Sample picking list',
+                      })
+                    }
+                    className='px-4 py-2 bg-indigo-600 text-white rounded-md'
+                  >
+                    Create
+                  </button>
+                </div>
+              </div>
             </div>
           }
         />
@@ -155,23 +222,37 @@ const PickingListPages: React.FC = () => {
           element={
             loading ? (
               <div className='flex justify-center items-center h-64'>
-                <div className='spinner'></div>
+                <LoadingSpinner
+                  size='medium'
+                  color='amber'
+                  message='Loading picking list...'
+                />
               </div>
+            ) : error ? (
+              <ErrorMessage message={error} />
             ) : pickingList ? (
               <div>
                 <div className='flex justify-between items-center mb-6'>
-                  <h1 className='text-2xl font-bold'>
-                    Picking List {pickingList.id.substring(0, 8)}
+                  <div>
+                    <h1 className='text-2xl font-bold'>
+                      Picking List {pickingList.id.substring(0, 8)}
+                    </h1>
                     {pickingList.notes && (
-                      <span className='text-sm ml-2 text-gray-500'>
-                        ({pickingList.notes})
-                      </span>
+                      <p className='text-sm text-gray-500 mt-1'>
+                        {pickingList.notes}
+                      </p>
                     )}
-                  </h1>
+                  </div>
                   <div className='flex space-x-3'>
                     <button
+                      onClick={() => navigate('/picking-lists')}
+                      className='px-4 py-2 border border-gray-300 text-gray-700 rounded-md'
+                    >
+                      Back to List
+                    </button>
+                    <button
                       onClick={handleCompletePickingList}
-                      className='px-4 py-2 bg-green-600 text-white rounded'
+                      className='px-4 py-2 bg-green-600 text-white rounded-md'
                       disabled={
                         pickingList.status === PickingListStatus.COMPLETED
                       }
@@ -181,54 +262,153 @@ const PickingListPages: React.FC = () => {
                   </div>
                 </div>
 
-                <div className='bg-white shadow rounded p-4'>
-                  <h3 className='text-lg font-medium mb-4'>Items</h3>
-                  {pickingItems.length > 0 ? (
-                    <ul className='space-y-2'>
-                      {pickingItems.map((item: PickingListItem) => (
-                        <li key={item.id} className='flex items-center'>
-                          <input
-                            type='checkbox'
-                            checked={
-                              item.status === 'complete' ||
-                              completedItems.includes(item.id)
-                            }
-                            onChange={() => handleItemToggle(item.id)}
-                            disabled={
+                <div className='bg-white shadow-sm rounded-lg'>
+                  {/* Status and info */}
+                  <div className='p-4 border-b border-gray-200'>
+                    <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+                      <div>
+                        <span className='text-sm text-gray-500'>Status</span>
+                        <div className='mt-1'>
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                               pickingList.status === PickingListStatus.COMPLETED
-                            }
-                            className='mr-2'
-                          />
-                          <span>
-                            {item.materialId} - Qty: {item.quantity}
-                            <span className='ml-2 text-sm'>
-                              (Picked: {item.pickedQuantity}/{item.quantity})
-                            </span>
-                            <span
-                              className={`ml-2 text-xs px-2 py-1 rounded-full ${
-                                item.status === 'complete'
-                                  ? 'bg-green-100 text-green-800'
-                                  : item.status === 'partial'
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-gray-100 text-gray-800'
-                              }`}
-                            >
-                              {item.status}
-                            </span>
-                            {item.notes && (
-                              <span className='ml-2 text-sm text-gray-500'>
-                                ({item.notes})
-                              </span>
-                            )}
+                                ? 'bg-green-100 text-green-800'
+                                : pickingList.status ===
+                                  PickingListStatus.IN_PROGRESS
+                                ? 'bg-blue-100 text-blue-800'
+                                : pickingList.status ===
+                                  PickingListStatus.CANCELLED
+                                ? 'bg-red-100 text-red-800'
+                                : 'bg-gray-100 text-gray-800'
+                            }`}
+                          >
+                            {pickingList.status.replace(/_/g, ' ')}
                           </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className='text-gray-500'>
-                      No items in this picking list.
-                    </p>
-                  )}
+                        </div>
+                      </div>
+                      <div>
+                        <span className='text-sm text-gray-500'>Created</span>
+                        <div className='mt-1 text-sm font-medium'>
+                          {new Date(pickingList.createdAt).toLocaleString()}
+                        </div>
+                      </div>
+                      <div>
+                        <span className='text-sm text-gray-500'>
+                          Assigned To
+                        </span>
+                        <div className='mt-1 text-sm font-medium'>
+                          {pickingList.assignedTo
+                            ? pickingList.assignedTo
+                            : 'Unassigned'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Items section */}
+                  <div className='p-4'>
+                    <h3 className='text-lg font-medium mb-4'>Items</h3>
+                    {pickingItems.length > 0 ? (
+                      <div className='space-y-4'>
+                        {pickingItems.map((item) => (
+                          <div
+                            key={item.id}
+                            className='flex items-center p-3 border border-gray-200 rounded-md'
+                          >
+                            <input
+                              type='checkbox'
+                              checked={
+                                item.quantityPicked >= item.quantityOrdered
+                              }
+                              onChange={() => handleItemToggle(item.id)}
+                              disabled={
+                                pickingList.status ===
+                                PickingListStatus.COMPLETED
+                              }
+                              className='h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded'
+                            />
+                            <div className='ml-3 flex-1'>
+                              <div className='flex justify-between'>
+                                <div>
+                                  <p className='text-sm font-medium text-gray-900'>
+                                    {item.materialId
+                                      ? `Material #${item.materialId}`
+                                      : 'Item'}
+                                    {item.componentId
+                                      ? ` (Component #${item.componentId})`
+                                      : ''}
+                                  </p>
+                                  <p className='text-xs text-gray-500'>
+                                    {item.notes}
+                                  </p>
+                                </div>
+                                <div className='text-sm'>
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                                    ${
+                                      item.quantityPicked >=
+                                      item.quantityOrdered
+                                        ? 'bg-green-100 text-green-800'
+                                        : item.quantityPicked > 0
+                                        ? 'bg-yellow-100 text-yellow-800'
+                                        : 'bg-gray-100 text-gray-800'
+                                    }`}
+                                  >
+                                    {item.quantityPicked} /{' '}
+                                    {item.quantityOrdered}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className='text-center py-8'>
+                        <p className='text-gray-500'>
+                          No items in this picking list
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Progress summary */}
+                  <div className='border-t border-gray-200 p-4'>
+                    <div className='flex justify-between items-center'>
+                      <div>
+                        <p className='text-sm font-medium text-gray-700'>
+                          Progress:{' '}
+                          {pickingItems.length > 0
+                            ? Math.round(
+                                (completedItems.length / pickingItems.length) *
+                                  100
+                              )
+                            : 0}
+                          %
+                        </p>
+                        <div className='w-64 bg-gray-200 rounded-full h-2.5 mt-2'>
+                          <div
+                            className='bg-blue-600 h-2.5 rounded-full'
+                            style={{
+                              width: `${
+                                pickingItems.length > 0
+                                  ? (completedItems.length /
+                                      pickingItems.length) *
+                                    100
+                                  : 0
+                              }%`,
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+                      <div>
+                        <p className='text-sm text-gray-500'>
+                          {completedItems.length} of {pickingItems.length} items
+                          picked
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : (

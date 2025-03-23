@@ -1,3 +1,4 @@
+// src/components/sales/OrderActions.tsx
 import React, { useState } from 'react';
 import { useSales } from '../../context/SalesContext';
 import { FulfillmentStatus, Sale } from '../../types/salesTypes';
@@ -7,6 +8,13 @@ import PickingListGenerator from './PickingListGenerator';
 
 interface OrderActionsProps {
   sale: Sale;
+}
+
+// Define a type for the enhanced sale with our custom properties
+interface EnhancedSale extends Sale {
+  _pickingListId?: number;
+  _pickingListStatus?: string;
+  _pickingListCreatedAt?: string;
 }
 
 const OrderActions: React.FC<OrderActionsProps> = ({ sale }) => {
@@ -22,18 +30,20 @@ const OrderActions: React.FC<OrderActionsProps> = ({ sale }) => {
     text: string;
   } | null>(null);
 
+  // Cast sale to our enhanced type
+  const enhancedSale = sale as EnhancedSale;
+
   // Check available actions based on status
   const canCreatePickingList =
-    sale.fulfillmentStatus === FulfillmentStatus.PENDING && !sale.pickingList;
-
-  const canUpdateShipping =
-    sale.fulfillmentStatus === FulfillmentStatus.READY_TO_SHIP;
+    sale.fulfillmentStatus === FulfillmentStatus.PENDING &&
+    !enhancedSale._pickingListId;
 
   const canMarkAsShipped =
     (sale.fulfillmentStatus === FulfillmentStatus.READY_TO_SHIP ||
       sale.fulfillmentStatus === FulfillmentStatus.PICKING) &&
     !showFulfillmentForm;
 
+  // Direct creation of picking list without going through the generator UI
   const handleCreatePickingList = async () => {
     if (!canCreatePickingList) return;
 
@@ -47,9 +57,10 @@ const OrderActions: React.FC<OrderActionsProps> = ({ sale }) => {
         text: `Picking list #${pickingListId} created successfully.`,
       });
     } catch (err) {
+      console.error('Failed to create picking list:', err);
       setActionMessage({
         type: 'error',
-        text: 'Failed to create picking list.',
+        text: 'Failed to create picking list. Please try again.',
       });
     } finally {
       setIsProcessing(false);
@@ -91,9 +102,9 @@ const OrderActions: React.FC<OrderActionsProps> = ({ sale }) => {
   };
 
   const handleViewPickingList = () => {
-    if (sale.pickingList) {
+    if (enhancedSale._pickingListId) {
       alert(
-        `Navigate to picking list #${sale.pickingList.id} will be implemented in future phase`
+        `Navigate to picking list #${enhancedSale._pickingListId} will be implemented in future phase`
       );
     }
   };
@@ -175,29 +186,81 @@ const OrderActions: React.FC<OrderActionsProps> = ({ sale }) => {
 
         {/* Picking List Actions */}
         {canCreatePickingList && !showPickingListGenerator && (
-          <button
-            onClick={handleShowPickingListGenerator}
-            className='inline-flex items-center px-3 py-2 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-md text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:bg-amber-300'
-          >
-            <svg
-              className='mr-2 h-4 w-4'
-              xmlns='http://www.w3.org/2000/svg'
-              fill='none'
-              viewBox='0 0 24 24'
-              stroke='currentColor'
+          <>
+            <button
+              onClick={handleShowPickingListGenerator}
+              className='inline-flex items-center px-3 py-2 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-md text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:bg-amber-300'
             >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={2}
-                d='M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 14l2 2m0 0l2-2m-2 2v-6'
-              />
-            </svg>
-            Generate Picking List
-          </button>
+              <svg
+                className='mr-2 h-4 w-4'
+                xmlns='http://www.w3.org/2000/svg'
+                fill='none'
+                viewBox='0 0 24 24'
+                stroke='currentColor'
+              >
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={2}
+                  d='M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 14l2 2m0 0l2-2m-2 2v-6'
+                />
+              </svg>
+              Configure Picking List
+            </button>
+
+            <button
+              onClick={handleCreatePickingList}
+              disabled={isProcessing}
+              className='inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:opacity-50'
+            >
+              {isProcessing ? (
+                <>
+                  <svg
+                    className='animate-spin -ml-1 mr-2 h-4 w-4 text-amber-700'
+                    xmlns='http://www.w3.org/2000/svg'
+                    fill='none'
+                    viewBox='0 0 24 24'
+                  >
+                    <circle
+                      className='opacity-25'
+                      cx='12'
+                      cy='12'
+                      r='10'
+                      stroke='currentColor'
+                      strokeWidth='4'
+                    ></circle>
+                    <path
+                      className='opacity-75'
+                      fill='currentColor'
+                      d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
+                    ></path>
+                  </svg>
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <svg
+                    className='mr-2 h-4 w-4 text-amber-700'
+                    xmlns='http://www.w3.org/2000/svg'
+                    fill='none'
+                    viewBox='0 0 24 24'
+                    stroke='currentColor'
+                  >
+                    <path
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      strokeWidth={2}
+                      d='M12 6v6m0 0v6m0-6h6m-6 0H6'
+                    />
+                  </svg>
+                  Quick Create List
+                </>
+              )}
+            </button>
+          </>
         )}
 
-        {sale.pickingList && (
+        {enhancedSale._pickingListId && (
           <button
             onClick={handleViewPickingList}
             className='inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500'

@@ -17,7 +17,7 @@ const PurchaseOrderManagement: React.FC = () => {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
-  const { filteredPurchaseOrders, filters, setFilters } = usePurchaseOrders();
+  const { filteredOrders, filters, setFilters } = usePurchaseOrders();
 
   // Handle viewing a purchase order's details
   const handleViewOrder = (order: PurchaseOrder) => {
@@ -54,12 +54,12 @@ const PurchaseOrderManagement: React.FC = () => {
 
         {viewMode === 'grid' ? (
           <PurchaseOrderGridView
-            orders={filteredPurchaseOrders}
+            orders={filteredOrders}
             onViewOrder={handleViewOrder}
           />
         ) : (
           <PurchaseOrderListView
-            orders={filteredPurchaseOrders}
+            orders={filteredOrders}
             onViewOrder={handleViewOrder}
           />
         )}

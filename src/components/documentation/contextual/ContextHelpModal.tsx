@@ -1,109 +1,191 @@
-// src/components/documentation/contextual/ContextHelpModal.tsx
+// src/components/documentation/contextual/ContextHelpProvider.tsx
+import { getContextualHelp } from '@/services/documentation-service';
+import { DocumentationResource } from '@/types/documentationTypes';
+import React, {
+  createContext,
+  ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from 'react';
 
-import { ExternalLink, X } from 'lucide-react';
-import React, { useEffect, useRef } from 'react';
-import ContentRenderer from '../ContentRenderer';
-import { useContextHelp } from './ContextHelpProvider';
+interface ContextHelpState {
+  isVisible: boolean;
+  contextKey: string | null;
+  targetSelector: string;
+  position: 'top' | 'right' | 'bottom' | 'left';
+  resources: DocumentationResource[];
+  loading: boolean;
+  error: string | null;
+  recentlyViewed: string[];
+}
 
-const ContextHelpModal: React.FC = () => {
-  const { isHelpVisible, helpResources, hideHelp, currentContextKey } =
-    useContextHelp();
-  const modalRef = useRef<HTMLDivElement>(null);
+export interface ContextHelpContextType {
+  showHelp: (
+    contextKey: string,
+    targetSelector?: string,
+    position?: 'top' | 'right' | 'bottom' | 'left'
+  ) => void;
+  closeHelp: () => void;
+  resources: DocumentationResource[];
+  loading: boolean;
+  error: string | null;
+  recentlyViewed: string[];
 
-  // Close modal on escape key
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isHelpVisible) {
-        hideHelp();
+  // New properties to match the usage in ContextHelpModal
+  open: boolean;
+  currentKey: string | null;
+  loadContextualHelp: (key: string) => Promise<void>;
+}
+
+const initialState: ContextHelpState = {
+  isVisible: false,
+  contextKey: null,
+  targetSelector: 'body',
+  position: 'right',
+  resources: [],
+  loading: false,
+  error: null,
+  recentlyViewed: [],
+};
+
+const ContextHelpContext = createContext<ContextHelpContextType | undefined>(
+  undefined
+);
+
+export const useContextHelp = (): ContextHelpContextType => {
+  const context = useContext(ContextHelpContext);
+  if (!context) {
+    throw new Error('useContextHelp must be used within a ContextHelpProvider');
+  }
+  return context;
+};
+
+interface ContextHelpProviderProps {
+  children: ReactNode;
+  maxRecentlyViewed?: number;
+}
+
+export const ContextHelpProvider: React.FC<ContextHelpProviderProps> = ({
+  children,
+  maxRecentlyViewed = 5,
+}) => {
+  const [helpState, setHelpState] = useState<ContextHelpState>(initialState);
+
+  const loadContextualHelp = useCallback(
+    async (key: string) => {
+      setHelpState((prevState) => ({
+        ...prevState,
+        loading: true,
+        error: null,
+      }));
+
+      try {
+        const resources = await getContextualHelp(key);
+        setHelpState((prevState) => {
+          const recentlyViewed = [
+            key,
+            ...prevState.recentlyViewed.filter((k) => k !== key),
+          ].slice(0, maxRecentlyViewed);
+          return {
+            ...prevState,
+            resources,
+            loading: false,
+            error: null,
+            contextKey: key,
+            recentlyViewed,
+          };
+        });
+      } catch (error: any) {
+        setHelpState((prevState) => ({
+          ...prevState,
+          loading: false,
+          error: error.message || 'Failed to load contextual help',
+        }));
       }
-    };
+    },
+    [maxRecentlyViewed]
+  );
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isHelpVisible, hideHelp]);
+  const showHelp = useCallback(
+    (
+      contextKey: string,
+      targetSelector: string = 'body',
+      position: 'top' | 'right' | 'bottom' | 'left' = 'right'
+    ) => {
+      setHelpState((prevState) => ({
+        ...prevState,
+        isVisible: true,
+        contextKey,
+        targetSelector,
+        position,
+      }));
+      loadContextualHelp(contextKey);
+    },
+    [loadContextualHelp]
+  );
 
-  // Close modal when clicking outside
+  const closeHelp = useCallback(() => {
+    setHelpState((prevState) => ({
+      ...prevState,
+      isVisible: false,
+      resources: [], // Clear resources when closing
+    }));
+  }, []);
+
+  // Load user's recently viewed help from localStorage on mount
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        modalRef.current &&
-        !modalRef.current.contains(e.target as Node) &&
-        isHelpVisible
-      ) {
-        hideHelp();
+    try {
+      const storedRecent = localStorage.getItem('contextHelpRecentlyViewed');
+      if (storedRecent) {
+        const parsed = JSON.parse(storedRecent);
+        if (Array.isArray(parsed)) {
+          setHelpState((prev) => ({ ...prev, recentlyViewed: parsed }));
+        }
       }
-    };
+    } catch (err) {
+      console.error(
+        'Failed to load recently viewed help from localStorage:',
+        err
+      );
+    }
+  }, []);
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isHelpVisible, hideHelp]);
-
-  if (!isHelpVisible) return null;
+  // Save recently viewed to localStorage when it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        'contextHelpRecentlyViewed',
+        JSON.stringify(helpState.recentlyViewed)
+      );
+    } catch (err) {
+      console.error(
+        'Failed to save recently viewed help to localStorage:',
+        err
+      );
+    }
+  }, [helpState.recentlyViewed]);
 
   return (
-    <div className='fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4'>
-      <div
-        ref={modalRef}
-        className='bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col'
-      >
-        <div className='flex justify-between items-center border-b p-4'>
-          <h2 className='text-lg font-medium'>
-            {helpResources.length > 0 ? helpResources[0].title : 'Help'}
-          </h2>
-          <button
-            onClick={hideHelp}
-            className='text-gray-500 hover:text-gray-700'
-            aria-label='Close help'
-          >
-            <X size={20} />
-          </button>
-        </div>
+    <ContextHelpContext.Provider
+      value={{
+        showHelp,
+        closeHelp,
+        resources: helpState.resources,
+        loading: helpState.loading,
+        error: helpState.error,
+        recentlyViewed: helpState.recentlyViewed,
 
-        <div className='flex-1 overflow-y-auto p-4'>
-          {helpResources.length > 0 ? (
-            helpResources.map((resource) => (
-              <div key={resource.id} className='mb-6'>
-                {helpResources.length > 1 && (
-                  <h3 className='text-lg font-medium mb-2'>{resource.title}</h3>
-                )}
-                <p className='text-gray-600 mb-4'>{resource.description}</p>
-                <ContentRenderer content={resource.content} />
-              </div>
-            ))
-          ) : (
-            <div className='text-center text-gray-500 py-8'>
-              <p className='mb-2'>
-                No help content available for "{currentContextKey}".
-              </p>
-              <p className='text-sm'>
-                Please check the documentation for general guidance.
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div className='border-t p-4 flex justify-between'>
-          <a
-            href='/documentation'
-            className='text-amber-600 hover:text-amber-800 flex items-center'
-            onClick={(e) => {
-              hideHelp();
-              // Allow the link to work normally
-            }}
-          >
-            <ExternalLink size={16} className='mr-1' />
-            Open full documentation
-          </a>
-          <button
-            onClick={hideHelp}
-            className='px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded'
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
+        // New properties to match the usage in ContextHelpModal
+        open: helpState.isVisible,
+        currentKey: helpState.contextKey,
+        loadContextualHelp,
+      }}
+    >
+      {children}
+    </ContextHelpContext.Provider>
   );
 };
 
-export default ContextHelpModal;
+export default ContextHelpProvider;

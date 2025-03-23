@@ -10,6 +10,7 @@ export enum PickingListStatus {
 
 // Interface for picking list
 export interface PickingList {
+  items: any;
   id: string;
   projectId: string;
   status: PickingListStatus;

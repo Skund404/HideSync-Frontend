@@ -1,5 +1,6 @@
 // src/pages/IntegrationCallback.tsx
 import LoadingSpinner from '@/components/common/LoadingSpinner';
+import ErrorMessage from '@/components/common/ErrorMessage';
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -54,13 +55,13 @@ const IntegrationCallback: React.FC = () => {
         // The state param should include the platform name
         let platform: SalesChannel;
 
-        if (state.includes('shopify')) {
+        if (state.includes(SalesChannel.SHOPIFY)) {
           platform = SalesChannel.SHOPIFY;
-        } else if (state.includes('etsy')) {
+        } else if (state.includes(SalesChannel.ETSY)) {
           platform = SalesChannel.ETSY;
-        } else if (state.includes('amazon')) {
+        } else if (state.includes(SalesChannel.AMAZON)) {
           platform = SalesChannel.AMAZON;
-        } else if (state.includes('ebay')) {
+        } else if (state.includes(SalesChannel.EBAY)) {
           platform = SalesChannel.EBAY;
         } else {
           setStatus('error');
@@ -68,8 +69,11 @@ const IntegrationCallback: React.FC = () => {
           return;
         }
 
+        // Calculate the callback URL that was used (current URL without query params)
+        const redirectUri = `${window.location.origin}${window.location.pathname}`;
+
         // Handle the authorization code
-        const success = await handleAuthCallback(platform, code, state);
+        const success = await handleAuthCallback(platform, code, redirectUri);
 
         if (success) {
           setStatus('success');
@@ -103,8 +107,7 @@ const IntegrationCallback: React.FC = () => {
         <div className='flex flex-col items-center'>
           {status === 'loading' && (
             <>
-              <LoadingSpinner />
-              <p className='mt-4 text-gray-600'>{message}</p>
+              <LoadingSpinner size="medium" color="amber" message={message} />
             </>
           )}
 
@@ -135,23 +138,10 @@ const IntegrationCallback: React.FC = () => {
 
           {status === 'error' && (
             <div className='text-center'>
-              <div className='bg-red-100 text-red-700 p-4 rounded-md mb-4'>
-                <svg
-                  xmlns='http://www.w3.org/2000/svg'
-                  className='h-6 w-6 mx-auto mb-2'
-                  fill='none'
-                  viewBox='0 0 24 24'
-                  stroke='currentColor'
-                >
-                  <path
-                    strokeLinecap='round'
-                    strokeLinejoin='round'
-                    strokeWidth={2}
-                    d='M6 18L18 6M6 6l12 12'
-                  />
-                </svg>
-                <p>{message}</p>
-              </div>
+              <ErrorMessage
+                message={message}
+                onRetry={() => navigate('/integrations')}
+              />
               <button
                 onClick={() => navigate('/integrations')}
                 className='mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700'

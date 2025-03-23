@@ -1,8 +1,14 @@
+// src/components/sales/SalesReport.tsx
 import React, { useEffect, useState } from 'react';
-import { useSales } from '../../context/SalesContext';
 import { FulfillmentStatus, SalesChannel } from '../../types/salesTypes';
 // Import PaymentStatus from enums instead of salesTypes
+import * as salesReportService from '../../services/sales-report-service';
+import {
+  SalesMetrics,
+  SalesReportFilters,
+} from '../../services/sales-report-service';
 import { PaymentStatus } from '../../types/enums';
+import ErrorMessage from '../common/ErrorMessage';
 import LoadingSpinner from '../common/LoadingSpinner';
 
 interface SalesReportProps {
@@ -12,198 +18,76 @@ interface SalesReportProps {
   onExportReport?: (format: 'csv' | 'pdf') => void;
 }
 
-interface SalesMetrics {
-  totalOrders: number;
-  totalRevenue: number;
-  totalFees: number;
-  netRevenue: number;
-  avgOrderValue: number;
-  fulfillmentBreakdown: Record<string, number>;
-  paymentBreakdown: Record<string, number>;
-  channelBreakdown: Record<
-    string,
-    { count: number; revenue: number; fees: number }
-  >;
-  dailySales: Array<{
-    date: string;
-    orders: number;
-    revenue: number;
-    fees: number;
-  }>;
-  productSales: Array<{ name: string; quantity: number; revenue: number }>;
-}
-
 const SalesReport: React.FC<SalesReportProps> = ({
   startDate,
   endDate,
   channels,
   onExportReport,
 }) => {
-  const { sales, completedSales, loading, error } = useSales();
   const [metrics, setMetrics] = useState<SalesMetrics | null>(null);
-  const [calculatingMetrics, setCalculatingMetrics] = useState(false);
-  const [reportError, setReportError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
-  // Calculate sales metrics when props change
+  // Fetch report data when props change
   useEffect(() => {
-    if (loading) return;
+    const fetchReportData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
 
-    setCalculatingMetrics(true);
-    setReportError(null);
+        const filters: SalesReportFilters = {
+          startDate,
+          endDate,
+          channels,
+        };
+
+        const reportMetrics = await salesReportService.getSalesReportMetrics(
+          filters
+        );
+        setMetrics(reportMetrics);
+      } catch (err) {
+        console.error('Error fetching report data:', err);
+        setError('Failed to load sales report data. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchReportData();
+  }, [startDate, endDate, channels]);
+
+  // Handle export click
+  const handleExport = async (format: 'csv' | 'pdf') => {
+    if (onExportReport) {
+      // Use provided export handler if available
+      onExportReport(format);
+      return;
+    }
 
     try {
-      // Get all sales within the date range
-      const filteredSales = [...sales, ...completedSales].filter((sale) => {
-        const saleDate = new Date(sale.createdAt);
-        return (
-          saleDate >= startDate &&
-          saleDate <= endDate &&
-          (!channels ||
-            channels.length === 0 ||
-            channels.includes(sale.channel))
-        );
-      });
+      setExporting(true);
+      setError(null);
 
-      // Initialize metrics
-      const metrics: SalesMetrics = {
-        totalOrders: 0,
-        totalRevenue: 0,
-        totalFees: 0,
-        netRevenue: 0,
-        avgOrderValue: 0,
-        fulfillmentBreakdown: {},
-        paymentBreakdown: {},
-        channelBreakdown: {},
-        dailySales: [],
-        productSales: [],
+      const filters: SalesReportFilters = {
+        startDate,
+        endDate,
+        channels,
       };
 
-      // Initialize channel breakdown for all channels
-      Object.values(SalesChannel).forEach((channel) => {
-        metrics.channelBreakdown[channel] = { count: 0, revenue: 0, fees: 0 };
-      });
+      const downloadUrl = await salesReportService.exportSalesReport(
+        filters,
+        format
+      );
 
-      // Initialize fulfillment breakdown
-      Object.values(FulfillmentStatus).forEach((status) => {
-        metrics.fulfillmentBreakdown[status] = 0;
-      });
-
-      // Initialize payment breakdown
-      Object.values(PaymentStatus).forEach((status) => {
-        metrics.paymentBreakdown[status] = 0;
-      });
-
-      // Initialize daily sales map
-      const dailySalesMap = new Map<
-        string,
-        { orders: number; revenue: number; fees: number }
-      >();
-      const dateRange = getDateRange(startDate, endDate);
-
-      dateRange.forEach((date) => {
-        dailySalesMap.set(date, { orders: 0, revenue: 0, fees: 0 });
-      });
-
-      // Initialize product sales map
-      const productSalesMap = new Map<
-        string,
-        { quantity: number; revenue: number }
-      >();
-
-      // Calculate metrics from sales
-      filteredSales.forEach((sale) => {
-        // Increment total metrics
-        metrics.totalOrders++;
-        metrics.totalRevenue += sale.total;
-        metrics.totalFees += sale.platformFees || 0;
-
-        // Update channel breakdown
-        const channel = sale.channel;
-        // Fix the type issue by properly checking if the key exists
-        const channelMetric = metrics.channelBreakdown[channel];
-        if (channelMetric) {
-          channelMetric.count++;
-          channelMetric.revenue += sale.total;
-          channelMetric.fees += sale.platformFees || 0;
-        }
-
-        // Update fulfillment breakdown
-        metrics.fulfillmentBreakdown[sale.fulfillmentStatus]++;
-
-        // Update payment breakdown
-        metrics.paymentBreakdown[sale.paymentStatus]++;
-
-        // Update daily sales
-        const saleDate = new Date(sale.createdAt);
-        const dateString = saleDate.toISOString().split('T')[0];
-
-        if (dailySalesMap.has(dateString)) {
-          const dailyData = dailySalesMap.get(dateString)!;
-          dailyData.orders++;
-          dailyData.revenue += sale.total;
-          dailyData.fees += sale.platformFees || 0;
-          dailySalesMap.set(dateString, dailyData);
-        }
-
-        // Update product sales
-        sale.items.forEach((item) => {
-          const key = item.name;
-          if (productSalesMap.has(key)) {
-            const productData = productSalesMap.get(key)!;
-            productData.quantity += item.quantity;
-            productData.revenue += item.price * item.quantity;
-            productSalesMap.set(key, productData);
-          } else {
-            productSalesMap.set(key, {
-              quantity: item.quantity,
-              revenue: item.price * item.quantity,
-            });
-          }
-        });
-      });
-
-      // Calculate derived metrics
-      metrics.netRevenue = metrics.totalRevenue - metrics.totalFees;
-      metrics.avgOrderValue =
-        filteredSales.length > 0
-          ? metrics.totalRevenue / filteredSales.length
-          : 0;
-
-      // Convert daily sales map to array
-      metrics.dailySales = Array.from(dailySalesMap).map(([date, data]) => ({
-        date,
-        ...data,
-      }));
-
-      // Convert product sales map to array and sort by revenue
-      metrics.productSales = Array.from(productSalesMap)
-        .map(([name, data]) => ({
-          name,
-          ...data,
-        }))
-        .sort((a, b) => b.revenue - a.revenue);
-
-      // Update metrics state
-      setMetrics(metrics);
+      // Open the download URL in a new tab
+      window.open(downloadUrl, '_blank');
     } catch (err) {
-      console.error('Error calculating metrics:', err);
-      setReportError('Failed to calculate sales metrics.');
+      console.error('Error exporting report:', err);
+      setError(`Failed to export report as ${format.toUpperCase()}`);
     } finally {
-      setCalculatingMetrics(false);
+      setExporting(false);
     }
-  }, [sales, completedSales, startDate, endDate, channels, loading]);
-
-  // Helper function to generate a range of dates
-  const getDateRange = (start: Date, end: Date): string[] => {
-    const dates: string[] = [];
-    const current = new Date(start);
-
-    while (current <= end) {
-      dates.push(current.toISOString().split('T')[0]);
-      current.setDate(current.getDate() + 1);
-    }
-
-    return dates;
   };
 
   // Format currency
@@ -214,26 +98,19 @@ const SalesReport: React.FC<SalesReportProps> = ({
     }).format(amount);
   };
 
-  // Handle export click
-  const handleExport = (format: 'csv' | 'pdf') => {
-    if (onExportReport) {
-      onExportReport(format);
-    } else {
-      alert(
-        `Export to ${format.toUpperCase()} will be implemented in a future version.`
-      );
-    }
-  };
-
-  if (loading || calculatingMetrics) {
+  if (loading) {
     return <LoadingSpinner />;
   }
 
-  if (error || reportError) {
+  if (error) {
     return (
-      <div className='bg-red-50 p-4 rounded-md text-red-800'>
-        {error || reportError}
-      </div>
+      <ErrorMessage
+        message={error}
+        onRetry={() => {
+          // Trigger a refresh by re-fetching with the same parameters
+          setLoading(true);
+        }}
+      />
     );
   }
 
@@ -250,18 +127,14 @@ const SalesReport: React.FC<SalesReportProps> = ({
     (channel) => metrics.channelBreakdown[channel as SalesChannel].count > 0
   );
 
-  const channelData = channelLabels.map(
-    (channel) => metrics.channelBreakdown[channel as SalesChannel].revenue
-  );
-
   // Get payment status labels and data
   const paymentLabels = Object.keys(metrics.paymentBreakdown).filter(
-    (status) => metrics.paymentBreakdown[status] > 0
+    (status) => metrics.paymentBreakdown[status as PaymentStatus] > 0
   );
 
   // Get fulfillment status labels and data
   const fulfillmentLabels = Object.keys(metrics.fulfillmentBreakdown).filter(
-    (status) => metrics.fulfillmentBreakdown[status] > 0
+    (status) => metrics.fulfillmentBreakdown[status as FulfillmentStatus] > 0
   );
 
   return (
@@ -277,47 +150,18 @@ const SalesReport: React.FC<SalesReportProps> = ({
         <div className='flex space-x-2'>
           <button
             onClick={() => handleExport('csv')}
-            className='inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500'
+            disabled={exporting}
+            className='inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:opacity-50'
           >
-            Export CSV
+            {exporting ? 'Exporting...' : 'Export CSV'}
           </button>
           <button
             onClick={() => handleExport('pdf')}
-            className='inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500'
+            disabled={exporting}
+            className='inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:opacity-50'
           >
-            Export PDF
+            {exporting ? 'Exporting...' : 'Export PDF'}
           </button>
-        </div>
-      </div>
-
-      {/* Summary metrics */}
-      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4'>
-        <div className='bg-white rounded-lg shadow-sm p-6 border border-gray-200'>
-          <h3 className='text-sm font-medium text-gray-500'>Total Orders</h3>
-          <p className='mt-2 text-3xl font-semibold text-gray-900'>
-            {metrics.totalOrders}
-          </p>
-        </div>
-        <div className='bg-white rounded-lg shadow-sm p-6 border border-gray-200'>
-          <h3 className='text-sm font-medium text-gray-500'>Total Revenue</h3>
-          <p className='mt-2 text-3xl font-semibold text-gray-900'>
-            {formatCurrency(metrics.totalRevenue)}
-          </p>
-        </div>
-        <div className='bg-white rounded-lg shadow-sm p-6 border border-gray-200'>
-          <h3 className='text-sm font-medium text-gray-500'>Net Revenue</h3>
-          <p className='mt-2 text-3xl font-semibold text-gray-900'>
-            {formatCurrency(metrics.netRevenue)}
-          </p>
-          <p className='text-sm text-gray-500 mt-1'>After platform fees</p>
-        </div>
-        <div className='bg-white rounded-lg shadow-sm p-6 border border-gray-200'>
-          <h3 className='text-sm font-medium text-gray-500'>
-            Average Order Value
-          </h3>
-          <p className='mt-2 text-3xl font-semibold text-gray-900'>
-            {formatCurrency(metrics.avgOrderValue)}
-          </p>
         </div>
       </div>
 
@@ -396,32 +240,84 @@ const SalesReport: React.FC<SalesReportProps> = ({
               </tbody>
             </table>
           </div>
-          <div className='h-64 mt-4'>
-            {/* Simple bar chart showing channel revenue */}
-            <div className='flex h-full items-end space-x-2'>
-              {channelLabels.map((channel, index) => {
-                const revenue =
-                  metrics.channelBreakdown[channel as SalesChannel].revenue;
-                const maxRevenue = Math.max(...channelData);
-                const height =
-                  maxRevenue > 0 ? (revenue / maxRevenue) * 100 : 0;
+        </div>
 
-                return (
-                  <div
-                    key={channel}
-                    className='flex-1 flex flex-col items-center'
-                  >
-                    <div
-                      className='w-full bg-amber-500 rounded-t'
-                      style={{ height: `${height}%` }}
-                    ></div>
-                    <div className='text-xs text-gray-500 mt-2 truncate w-full text-center'>
-                      {channel}
-                    </div>
+        {/* Fulfillment status breakdown */}
+        <div className='bg-white rounded-lg shadow-sm p-6 border border-gray-200'>
+          <h3 className='text-base font-medium text-gray-900 mb-4'>
+            Fulfillment Status
+          </h3>
+          <div className='space-y-4'>
+            {fulfillmentLabels.map((status) => {
+              const count =
+                metrics.fulfillmentBreakdown[status as FulfillmentStatus];
+              const percentage = (count / metrics.totalOrders) * 100;
+
+              return (
+                <div key={status}>
+                  <div className='flex justify-between items-center mb-1'>
+                    <span className='text-sm font-medium text-gray-700'>
+                      {status.replace(/_/g, ' ')}
+                    </span>
+                    <span className='text-sm text-gray-500'>
+                      {count} ({percentage.toFixed(1)}%)
+                    </span>
                   </div>
-                );
-              })}
-            </div>
+                  <div className='w-full bg-gray-200 rounded-full h-2.5'>
+                    <div
+                      className={`rounded-full h-2.5 ${
+                        status === FulfillmentStatus.SHIPPED ||
+                        status === FulfillmentStatus.DELIVERED
+                          ? 'bg-green-500'
+                          : status === FulfillmentStatus.CANCELLED
+                          ? 'bg-red-500'
+                          : 'bg-amber-500'
+                      }`}
+                      style={{ width: `${percentage}%` }}
+                    ></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Payment status breakdown */}
+        <div className='bg-white rounded-lg shadow-sm p-6 border border-gray-200'>
+          <h3 className='text-base font-medium text-gray-900 mb-4'>
+            Payment Status
+          </h3>
+          <div className='space-y-4'>
+            {paymentLabels.map((status) => {
+              const count = metrics.paymentBreakdown[status as PaymentStatus];
+              const percentage = (count / metrics.totalOrders) * 100;
+
+              return (
+                <div key={status}>
+                  <div className='flex justify-between items-center mb-1'>
+                    <span className='text-sm font-medium text-gray-700'>
+                      {status.replace(/_/g, ' ')}
+                    </span>
+                    <span className='text-sm text-gray-500'>
+                      {count} ({percentage.toFixed(1)}%)
+                    </span>
+                  </div>
+                  <div className='w-full bg-gray-200 rounded-full h-2.5'>
+                    <div
+                      className={`rounded-full h-2.5 ${
+                        status === PaymentStatus.PAID
+                          ? 'bg-green-500'
+                          : status === PaymentStatus.REFUNDED ||
+                            status === PaymentStatus.CANCELLED
+                          ? 'bg-red-500'
+                          : 'bg-amber-500'
+                      }`}
+                      style={{ width: `${percentage}%` }}
+                    ></div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -477,83 +373,36 @@ const SalesReport: React.FC<SalesReportProps> = ({
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Fulfillment status breakdown */}
+      {/* Summary metrics */}
+      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4'>
         <div className='bg-white rounded-lg shadow-sm p-6 border border-gray-200'>
-          <h3 className='text-base font-medium text-gray-900 mb-4'>
-            Fulfillment Status
-          </h3>
-          <div className='space-y-4'>
-            {fulfillmentLabels.map((status) => {
-              const count = metrics.fulfillmentBreakdown[status];
-              const percentage = (count / metrics.totalOrders) * 100;
-
-              return (
-                <div key={status}>
-                  <div className='flex justify-between items-center mb-1'>
-                    <span className='text-sm font-medium text-gray-700'>
-                      {status.replace(/_/g, ' ')}
-                    </span>
-                    <span className='text-sm text-gray-500'>
-                      {count} ({percentage.toFixed(1)}%)
-                    </span>
-                  </div>
-                  <div className='w-full bg-gray-200 rounded-full h-2.5'>
-                    <div
-                      className={`rounded-full h-2.5 ${
-                        status === FulfillmentStatus.SHIPPED ||
-                        status === FulfillmentStatus.DELIVERED
-                          ? 'bg-green-500'
-                          : status === FulfillmentStatus.CANCELLED
-                          ? 'bg-red-500'
-                          : 'bg-amber-500'
-                      }`}
-                      style={{ width: `${percentage}%` }}
-                    ></div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <h3 className='text-sm font-medium text-gray-500'>Total Orders</h3>
+          <p className='mt-2 text-3xl font-semibold text-gray-900'>
+            {metrics.totalOrders}
+          </p>
         </div>
-
-        {/* Payment status breakdown */}
         <div className='bg-white rounded-lg shadow-sm p-6 border border-gray-200'>
-          <h3 className='text-base font-medium text-gray-900 mb-4'>
-            Payment Status
+          <h3 className='text-sm font-medium text-gray-500'>Total Revenue</h3>
+          <p className='mt-2 text-3xl font-semibold text-gray-900'>
+            {formatCurrency(metrics.totalRevenue)}
+          </p>
+        </div>
+        <div className='bg-white rounded-lg shadow-sm p-6 border border-gray-200'>
+          <h3 className='text-sm font-medium text-gray-500'>Net Revenue</h3>
+          <p className='mt-2 text-3xl font-semibold text-gray-900'>
+            {formatCurrency(metrics.netRevenue)}
+          </p>
+          <p className='text-sm text-gray-500 mt-1'>After platform fees</p>
+        </div>
+        <div className='bg-white rounded-lg shadow-sm p-6 border border-gray-200'>
+          <h3 className='text-sm font-medium text-gray-500'>
+            Average Order Value
           </h3>
-          <div className='space-y-4'>
-            {paymentLabels.map((status) => {
-              const count = metrics.paymentBreakdown[status];
-              const percentage = (count / metrics.totalOrders) * 100;
-
-              return (
-                <div key={status}>
-                  <div className='flex justify-between items-center mb-1'>
-                    <span className='text-sm font-medium text-gray-700'>
-                      {status.replace(/_/g, ' ')}
-                    </span>
-                    <span className='text-sm text-gray-500'>
-                      {count} ({percentage.toFixed(1)}%)
-                    </span>
-                  </div>
-                  <div className='w-full bg-gray-200 rounded-full h-2.5'>
-                    <div
-                      className={`rounded-full h-2.5 ${
-                        status === PaymentStatus.PAID
-                          ? 'bg-green-500'
-                          : status === PaymentStatus.REFUNDED ||
-                            status === PaymentStatus.CANCELLED
-                          ? 'bg-red-500'
-                          : 'bg-amber-500'
-                      }`}
-                      style={{ width: `${percentage}%` }}
-                    ></div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <p className='mt-2 text-3xl font-semibold text-gray-900'>
+            {formatCurrency(metrics.avgOrderValue)}
+          </p>
         </div>
       </div>
 

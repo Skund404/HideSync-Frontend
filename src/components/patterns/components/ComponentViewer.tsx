@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { useComponentContext } from '../../../context/ComponentContext';
 import { Component } from '../../../types/patternTypes';
+import ErrorMessage from '../../common/ErrorMessage';
+import LoadingSpinner from '../../common/LoadingSpinner';
 
 interface ComponentViewerProps {
   patternId?: number;
@@ -17,20 +19,39 @@ const ComponentViewer: React.FC<ComponentViewerProps> = ({
   selectedComponentId,
   onSelectComponent,
 }) => {
-  const { getComponentsByPatternId } = useComponentContext();
+  const { getComponentsByPatternId, loading, error } = useComponentContext();
   const [components, setComponents] = useState<Component[]>(
     propComponents || []
   );
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   // Load components if not provided via props
   useEffect(() => {
     if (propComponents) {
       setComponents(propComponents);
     } else if (patternId) {
-      const patternComponents = getComponentsByPatternId(patternId);
-      setComponents(patternComponents);
+      const fetchComponents = async () => {
+        try {
+          const patternComponents = await getComponentsByPatternId(patternId);
+          setComponents(patternComponents);
+          setFetchError(null);
+        } catch (err) {
+          console.error(
+            `Error fetching components for pattern ${patternId}:`,
+            err
+          );
+          setFetchError('Failed to load components');
+        }
+      };
+
+      fetchComponents();
     }
   }, [patternId, propComponents, getComponentsByPatternId]);
+
+  if (loading)
+    return <LoadingSpinner size='small' message='Loading components...' />;
+  if (error || fetchError)
+    return <ErrorMessage message={error || fetchError || 'Unknown error'} />;
 
   if (!components || components.length === 0) {
     return (

@@ -1,330 +1,321 @@
-import { Material, MaterialType } from '@/types/materialTypes';
+// src/components/materials/common/MaterialDetailModal.tsx
+import {
+  isHardwareMaterial,
+  isLeatherMaterial,
+  isSuppliesMaterial,
+  Material,
+} from '@/types/materialTypes';
 import {
   formatPrice,
   formatQuantity,
   formatType,
-  getStatusColor,
 } from '@/utils/materialHelpers';
+import { X } from 'lucide-react';
 import React from 'react';
-
-// Helper function to get color hex for display
-const getColorHex = (colorName: string): string => {
-  const colorMap: Record<string, string> = {
-    natural: '#D2B48C',
-    tan: '#D2B48C',
-    brown: '#8B4513',
-    dark_brown: '#5C4033',
-    black: '#222222',
-    navy: '#000080',
-    burgundy: '#800020',
-    red: '#B22222',
-    green: '#006400',
-    blue: '#0000CD',
-    yellow: '#FFD700',
-    orange: '#FF8C00',
-    purple: '#800080',
-    white: '#F5F5F5',
-    grey: '#808080',
-    gray: '#808080',
-    silver: '#C0C0C0',
-    olive: '#808000',
-  };
-
-  return colorMap[colorName.toLowerCase()] || '#D2B48C'; // Default to tan if color not found
-};
-
-// Helper function to get hardware material color
-const getHardwareMaterialColor = (material: string): string => {
-  const materialColorMap: Record<string, string> = {
-    brass: '#B5A642',
-    nickel: '#C0C0C0',
-    stainless_steel: '#E0E0E0',
-    steel: '#71797E',
-    zinc: '#D3D4D5',
-    copper: '#B87333',
-    aluminum: '#A9A9A9',
-    plastic: '#1E90FF',
-    silver: '#C0C0C0',
-    gold: '#FFD700',
-  };
-
-  return materialColorMap[material.toLowerCase()] || '#C0C0C0'; // Default to silver
-};
 
 interface MaterialDetailModalProps {
   material: Material;
   onClose: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  isDeleting?: boolean;
 }
 
 const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
   material,
   onClose,
+  onEdit,
+  onDelete,
+  isDeleting = false,
 }) => {
-  // Render specific details based on material type
-  const renderSpecificDetails = () => {
-    switch (material.materialType) {
-      case MaterialType.LEATHER: {
-        const leatherMaterial = material as any;
-        return (
-          <div className='grid grid-cols-2 gap-4'>
-            <div>
-              <span className='text-stone-500 text-sm block'>
-                Animal Source
-              </span>
-              <span className='text-stone-800'>
-                {formatType(leatherMaterial.animalSource)}
-              </span>
-            </div>
-            <div>
-              <span className='text-stone-500 text-sm block'>Tannage</span>
-              <span className='text-stone-800'>
-                {formatType(leatherMaterial.tannage)}
-              </span>
-            </div>
-            <div>
-              <span className='text-stone-500 text-sm block'>Thickness</span>
-              <span className='text-stone-800'>
-                {leatherMaterial.thickness} oz
-              </span>
-            </div>
-            <div>
-              <span className='text-stone-500 text-sm block'>Color</span>
-              <div className='flex items-center'>
-                <div
-                  className='w-4 h-4 rounded-full mr-2'
-                  style={{
-                    backgroundColor: getColorHex(leatherMaterial.color),
-                  }}
-                ></div>
-                <span className='text-stone-800'>{leatherMaterial.color}</span>
-              </div>
-            </div>
-            <div>
-              <span className='text-stone-500 text-sm block'>Total Area</span>
-              <span className='text-stone-800'>
-                {leatherMaterial.area} sq ft
-              </span>
-            </div>
-          </div>
-        );
-      }
-      case MaterialType.HARDWARE: {
-        const hardwareMaterial = material as any;
-        return (
-          <div className='grid grid-cols-2 gap-4'>
-            <div>
-              <span className='text-stone-500 text-sm block'>
-                Hardware Type
-              </span>
-              <span className='text-stone-800'>
-                {formatType(hardwareMaterial.hardwareType)}
-              </span>
-            </div>
-            <div>
-              <span className='text-stone-500 text-sm block'>Material</span>
-              <div className='flex items-center'>
-                <div
-                  className='w-4 h-4 rounded-full mr-2'
-                  style={{
-                    backgroundColor: getHardwareMaterialColor(
-                      hardwareMaterial.hardwareMaterial
-                    ),
-                  }}
-                ></div>
-                <span className='text-stone-800'>
-                  {formatType(hardwareMaterial.hardwareMaterial)}
-                </span>
-              </div>
-            </div>
-            <div>
-              <span className='text-stone-500 text-sm block'>Finish</span>
-              <span className='text-stone-800'>
-                {formatType(hardwareMaterial.finish)}
-              </span>
-            </div>
-            <div>
-              <span className='text-stone-500 text-sm block'>Size</span>
-              <span className='text-stone-800'>{hardwareMaterial.size}</span>
-            </div>
-          </div>
-        );
-      }
-      case MaterialType.THREAD:
-      case MaterialType.WAXED_THREAD: {
-        const threadMaterial = material as any;
-        return (
-          <div className='grid grid-cols-2 gap-4'>
-            <div>
-              <span className='text-stone-500 text-sm block'>Thread Type</span>
-              <span className='text-stone-800'>
-                {formatType(threadMaterial.threadType)}
-              </span>
-            </div>
-            <div>
-              <span className='text-stone-500 text-sm block'>Thickness</span>
-              <span className='text-stone-800'>{threadMaterial.thickness}</span>
-            </div>
-            <div>
-              <span className='text-stone-500 text-sm block'>Color</span>
-              <div className='flex items-center'>
-                <div
-                  className='w-4 h-4 rounded-full mr-2'
-                  style={{ backgroundColor: getColorHex(threadMaterial.color) }}
-                ></div>
-                <span className='text-stone-800'>{threadMaterial.color}</span>
-              </div>
-            </div>
-            <div>
-              <span className='text-stone-500 text-sm block'>Composition</span>
-              <span className='text-stone-800'>
-                {threadMaterial.composition}
-              </span>
-            </div>
-          </div>
-        );
-      }
-      case MaterialType.SUPPLIES: {
-        const supplyMaterial = material as any;
-        return (
-          <div className='grid grid-cols-2 gap-4'>
-            <div>
-              <span className='text-stone-500 text-sm block'>Supply Type</span>
-              <span className='text-stone-800'>
-                {formatType(supplyMaterial.materialType)}
-              </span>
-            </div>
-            {supplyMaterial.color && (
-              <div>
-                <span className='text-stone-500 text-sm block'>Color</span>
-                <div className='flex items-center'>
-                  <div
-                    className='w-4 h-4 rounded-full mr-2'
-                    style={{
-                      backgroundColor: getColorHex(supplyMaterial.color),
-                    }}
-                  ></div>
-                  <span className='text-stone-800'>{supplyMaterial.color}</span>
-                </div>
-              </div>
-            )}
-            {supplyMaterial.brand && (
-              <div>
-                <span className='text-stone-500 text-sm block'>Brand</span>
-                <span className='text-stone-800'>{supplyMaterial.brand}</span>
-              </div>
-            )}
-            {supplyMaterial.size && (
-              <div>
-                <span className='text-stone-500 text-sm block'>Size</span>
-                <span className='text-stone-800'>{supplyMaterial.size}</span>
-              </div>
-            )}
-          </div>
-        );
-      }
-      default:
-        return null;
+  // Helper to safely get supplier info - supports both supplierId and potential supplier property
+  const getSupplierDisplay = (material: Material): string => {
+    // Try to access supplier property from material's "any" properties
+    const supplierName = (material as any).supplier;
+
+    // If supplier property exists, use it, otherwise use supplierId
+    return supplierName || material.supplierId?.toString() || 'Not specified';
+  };
+
+  // Helper to safely get lastPurchased property
+  const getLastPurchased = (material: Material): string => {
+    // Try to access lastPurchased property from material's "any" properties
+    return (material as any).lastPurchased || 'Not recorded';
+  };
+
+  // Get material-specific details for display
+  const getMaterialDetails = () => {
+    // Common properties for all materials
+    const details = [
+      {
+        label: 'ID',
+        value: material.id.toString(),
+      },
+      {
+        label: 'Status',
+        value: formatType(material.status),
+      },
+      {
+        label: 'Quantity',
+        value: material.unit
+          ? formatQuantity(material.quantity, material.unit)
+          : `${material.quantity}`,
+      },
+      {
+        label: 'Location',
+        value: material.storageLocation || 'Not assigned',
+      },
+      {
+        label: 'Supplier',
+        value: getSupplierDisplay(material),
+      },
+      {
+        label: 'SKU',
+        value: material.sku || 'No SKU',
+      },
+      {
+        label: 'Supplier SKU',
+        value: material.supplierSku || 'No supplier SKU',
+      },
+      {
+        label: 'Cost',
+        value: material.costPrice
+          ? formatPrice(material.costPrice)
+          : 'Not specified',
+      },
+      {
+        label: 'Price',
+        value: material.sellPrice
+          ? formatPrice(material.sellPrice)
+          : 'Not specified',
+      },
+      {
+        label: 'Reorder Point',
+        value:
+          material.reorderPoint !== undefined
+            ? material.reorderPoint.toString()
+            : 'Not set',
+      },
+      {
+        label: 'Last Purchased',
+        value: getLastPurchased(material),
+      },
+    ];
+
+    // Material type specific properties
+    if (isLeatherMaterial(material)) {
+      return [
+        ...details,
+        {
+          label: 'Leather Type',
+          value: material.subtype
+            ? formatType(material.subtype)
+            : 'Not specified',
+        },
+        {
+          label: 'Thickness',
+          value: material.thickness
+            ? `${material.thickness}mm`
+            : 'Not specified',
+        },
+        {
+          label: 'Animal Source',
+          value: material.animalSource
+            ? formatType(material.animalSource)
+            : 'Not specified',
+        },
+        {
+          label: 'Tannage',
+          value: material.tannage
+            ? formatType(material.tannage)
+            : 'Not specified',
+        },
+        {
+          label: 'Color',
+          value: material.color || 'Not specified',
+        },
+        {
+          label: 'Area',
+          value: material.area ? `${material.area} sqft` : 'Not specified',
+        },
+      ];
     }
+
+    if (isHardwareMaterial(material)) {
+      return [
+        ...details,
+        {
+          label: 'Hardware Type',
+          value: material.subtype
+            ? formatType(material.subtype)
+            : 'Not specified',
+        },
+        {
+          label: 'Material',
+          value: material.hardwareMaterial
+            ? formatType(material.hardwareMaterial)
+            : 'Not specified',
+        },
+        {
+          label: 'Finish',
+          value: material.finish
+            ? formatType(material.finish)
+            : 'Not specified',
+        },
+        {
+          label: 'Size',
+          value: material.size || 'Not specified',
+        },
+      ];
+    }
+
+    if (isSuppliesMaterial(material)) {
+      return [
+        ...details,
+        {
+          label: 'Supplies Type',
+          value: material.subtype
+            ? formatType(material.subtype)
+            : 'Not specified',
+        },
+        {
+          label: 'Color',
+          value: material.color || 'Not specified',
+        },
+        {
+          label: 'Composition',
+          value: material.composition || 'Not specified',
+        },
+        {
+          label: 'Thread Type',
+          value: material.threadType
+            ? formatType(material.threadType)
+            : 'Not specified',
+        },
+      ];
+    }
+
+    return details;
   };
 
   return (
     <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4'>
       <div className='bg-white rounded-lg p-6 w-full max-w-3xl max-h-screen overflow-y-auto'>
-        {/* Header */}
-        <div className='flex justify-between items-start mb-6'>
-          <div className='flex-grow'>
-            <h2 className='text-xl font-bold text-stone-900'>
-              {material.name}
-            </h2>
-            <p className='text-sm text-stone-500 mt-1'>
-              {formatType(material.materialType)} • {material.supplierSku}
-            </p>
-          </div>
+        <div className='flex justify-between items-start mb-4'>
+          <h2 className='text-xl font-bold'>{material.name}</h2>
           <button
             onClick={onClose}
             className='text-stone-400 hover:text-stone-600'
           >
-            <svg
-              xmlns='http://www.w3.org/2000/svg'
-              className='h-6 w-6'
-              fill='none'
-              viewBox='0 0 24 24'
-              stroke='currentColor'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={2}
-                d='M6 18L18 6M6 6l12 12'
-              />
-            </svg>
+            <X className='h-6 w-6' />
           </button>
         </div>
 
-        {/* Material Summary */}
-        <div className='bg-stone-50 border border-stone-200 rounded-lg p-4 mb-6 grid grid-cols-3 gap-4'>
-          <div>
-            <span className='text-stone-500 text-sm block'>Status</span>
-            <span
-              className={`px-2 py-1 rounded-md text-xs font-medium ${getStatusColor(
-                material.status
-              )}`}
-            >
-              {material.status.replace(/_/g, ' ')}
-            </span>
-          </div>
-          <div>
-            <span className='text-stone-500 text-sm block'>Quantity</span>
-            <span className='text-stone-800'>
-              {formatQuantity(material.quantity, material.unit)}
-            </span>
-          </div>
-          <div>
-            <span className='text-stone-500 text-sm block'>Location</span>
-            <span className='text-stone-800'>
-              {material.storageLocation || 'Unassigned'}
-            </span>
-          </div>
-        </div>
-
-        {/* Specific Material Details */}
-        <div className='mb-6'>
-          <h3 className='text-lg font-medium text-stone-800 mb-4'>Details</h3>
-          {renderSpecificDetails()}
-        </div>
-
-        {/* Additional Information */}
-        <div className='bg-stone-50 border border-stone-200 rounded-lg p-4'>
-          <div className='grid grid-cols-2 gap-4'>
-            <div>
-              <span className='text-stone-500 text-sm block'>Supplier</span>
-              <span className='text-stone-800'>{material.supplier}</span>
+        <div className='mb-6 flex items-start'>
+          {material.thumbnail ? (
+            <div className='h-32 w-32 mr-4 bg-stone-100 rounded-md overflow-hidden'>
+              <img
+                src={material.thumbnail}
+                alt={material.name}
+                className='w-full h-full object-cover'
+              />
             </div>
-            <div>
-              <span className='text-stone-500 text-sm block'>Unit Price</span>
-              <span className='text-stone-800'>
-                {formatPrice(material.price)}
-              </span>
+          ) : (
+            <div className='h-32 w-32 mr-4 flex items-center justify-center bg-stone-100 rounded-md text-stone-400'>
+              No Image
             </div>
-            {material.notes && (
-              <div className='col-span-2'>
-                <span className='text-stone-500 text-sm block'>Notes</span>
-                <span className='text-stone-800 italic'>{material.notes}</span>
-              </div>
+          )}
+
+          <div className='flex-1'>
+            <h3 className='font-medium text-lg mb-1'>{material.name}</h3>
+            <p className='text-stone-600 text-sm mb-2'>
+              {formatType(material.materialType)}
+            </p>
+            {material.description && (
+              <p className='text-sm text-stone-600 mb-3'>
+                {material.description}
+              </p>
             )}
+            <div className='flex flex-wrap gap-2'>
+              <span
+                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${formatType(
+                  material.status
+                ).toLowerCase()}-100 text-${formatType(
+                  material.status
+                ).toLowerCase()}-800`}
+              >
+                {formatType(material.status)}
+              </span>
+              {material.quantity <= (material.reorderPoint || 0) && (
+                <span className='inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800'>
+                  Low Stock
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Actions */}
-        <div className='flex justify-end mt-6 space-x-3'>
+        <div className='grid grid-cols-1 md:grid-cols-2 gap-6 mb-6'>
+          <div className='bg-stone-50 p-4 rounded-md'>
+            <h3 className='font-medium mb-3 text-stone-700'>
+              Material Details
+            </h3>
+            <div className='grid grid-cols-1 gap-2'>
+              {getMaterialDetails().map((detail, index) => (
+                <div
+                  key={index}
+                  className='flex justify-between border-b border-stone-100 py-1'
+                >
+                  <span className='text-sm text-stone-500'>
+                    {detail.label}:
+                  </span>
+                  <span className='text-sm font-medium text-stone-800'>
+                    {detail.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h3 className='font-medium mb-3 text-stone-700'>Notes</h3>
+            <div className='bg-stone-50 p-4 rounded-md h-full'>
+              {material.notes ? (
+                <p className='text-sm text-stone-600'>{material.notes}</p>
+              ) : (
+                <p className='text-sm text-stone-400 italic'>
+                  No notes available for this material
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className='flex justify-end mt-4 space-x-3'>
+          {onDelete && (
+            <button
+              onClick={onDelete}
+              disabled={isDeleting}
+              className={`px-4 py-2 border border-red-300 text-red-700 rounded-md hover:bg-red-50 ${
+                isDeleting ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+            >
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </button>
+          )}
+          {onEdit && (
+            <button
+              onClick={onEdit}
+              className='px-4 py-2 border border-amber-300 text-amber-700 rounded-md hover:bg-amber-50'
+            >
+              Edit
+            </button>
+          )}
           <button
             onClick={onClose}
-            className='px-4 py-2 bg-stone-100 text-stone-700 rounded-md hover:bg-stone-200'
+            className='px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700'
           >
             Close
-          </button>
-          <button className='px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700'>
-            Edit Material
           </button>
         </div>
       </div>

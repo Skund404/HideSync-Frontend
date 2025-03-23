@@ -1,8 +1,13 @@
+// src/components/sales/PickingListGenerator.tsx
 import React, { useEffect, useState } from 'react';
 import { usePickingLists } from '../../context/PickingListContext';
 import { useProjects } from '../../context/ProjectContext';
 import { useSales } from '../../context/SalesContext';
-import { ProjectStatus, ProjectType } from '../../types/enums';
+import {
+  PickingListStatus,
+  ProjectStatus,
+  ProjectType,
+} from '../../types/enums';
 import LoadingSpinner from '../common/LoadingSpinner';
 
 interface PickingListGeneratorProps {
@@ -114,38 +119,40 @@ const PickingListGenerator: React.FC<PickingListGeneratorProps> = ({
       setError(null);
 
       // Step 1: Create a project for this order if it doesn't exist
+      const startDate = new Date();
+      // Set due date to 2 weeks after start date
+      const dueDate = new Date(startDate);
+      dueDate.setDate(dueDate.getDate() + 14);
+
       const projectData = {
         name: `Order #${sale.id}`,
         description: `Project for order #${sale.id}`,
-        status: ProjectStatus.PLANNING, // Using the proper enum value
-        startDate: new Date().toISOString().split('T')[0], // Convert date to string
-        dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
-          .toISOString()
-          .split('T')[0], // 14 days from now
-        type: ProjectType.CUSTOM,
-        customer: `Customer #${sale.id}`,
-        completionPercentage: 0, // Initialize with 0% completion
+        status: ProjectStatus.PLANNING as any, // Use type assertion to handle enum mismatch
+        startDate: startDate,
+        dueDate: dueDate,
+        type: ProjectType.CUSTOM as any, // Use type assertion to handle enum mismatch
       };
 
       const project = await createProject(projectData);
-      // Convert number ID to string for state
-      setProjectId(project.id.toString());
+      setProjectId(project.id);
 
       // Step 2: Create picking list
-      const selectedMaterials = materials.filter(
-        (material) => material.selected
-      );
-
-      const pickingListData = {
-        projectId: project.id.toString(), // Convert number to string if needed
-        notes: notes || `Picking list for order #${sale.id}`,
-        // Convert materials to picking list items
-        items: selectedMaterials.map((material) => ({
+      const selectedMaterialItems = materials
+        .filter((material) => material.selected)
+        .map((material) => ({
           materialId: material.materialId.toString(),
-          quantity: material.quantity,
-          pickedQuantity: 0,
+          quantity_ordered: Math.ceil(material.quantity),
+          quantity_picked: 0,
           status: 'pending',
-        })),
+          notes: '',
+        }));
+
+      // Create picking list with only properties expected by API, use type assertion for enum
+      const pickingListData = {
+        projectId: project.id,
+        status: PickingListStatus.PENDING as any, // Use type assertion to handle enum mismatch
+        notes: notes || `Picking list for order #${sale.id}`,
+        items: selectedMaterialItems, // Add items property to fix the type error
       };
 
       const pickingList = await createPickingList(pickingListData);

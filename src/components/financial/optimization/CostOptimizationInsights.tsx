@@ -1,3 +1,4 @@
+// src/components/financial/optimization/CostOptimizationInsights.tsx
 import {
   AlertCircle,
   DollarSign,
@@ -9,12 +10,17 @@ import React, { useMemo, useState } from 'react';
 import { useFinancial } from '../../../context/FinancialContext';
 import { CostOptimizationInsight } from '../../../types/financialTypes';
 import { formatCurrency } from '../../../utils/financialHelpers';
+import ErrorMessage from '../../common/ErrorMessage';
+import LoadingSpinner from '../../common/LoadingSpinner';
 
 const CostOptimizationInsights: React.FC = () => {
-  const { costInsights, loading } = useFinancial();
+  const { costInsights, loading, loadingState, error, refreshData } =
+    useFinancial();
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
-  // Always calculate total savings
+  // Move all useMemo hooks before any conditional returns to fix React Hook rules violations
+
+  // Calculate total savings
   const totalSavings = useMemo(() => {
     return costInsights.reduce((total, insight) => {
       // Extract dollar amount from the savings string
@@ -26,7 +32,7 @@ const CostOptimizationInsights: React.FC = () => {
     }, 0);
   }, [costInsights]);
 
-  // Always generate categories
+  // Generate categories
   const categories = useMemo(() => {
     const uniqueCategories = new Set(
       costInsights.map((insight) => {
@@ -38,7 +44,7 @@ const CostOptimizationInsights: React.FC = () => {
     return ['all', ...Array.from(uniqueCategories)];
   }, [costInsights]);
 
-  // Always filter insights
+  // Filter insights
   const filteredInsights = useMemo(() => {
     return categoryFilter === 'all'
       ? costInsights
@@ -49,18 +55,32 @@ const CostOptimizationInsights: React.FC = () => {
         });
   }, [costInsights, categoryFilter]);
 
-  // Early returns moved after memoized calculations
-  if (loading) {
+  // Show loading spinner when loading cost insights
+  if (loading || loadingState.costInsights) {
     return (
       <div className='flex items-center justify-center h-64'>
-        <div className='text-center'>
-          <div className='inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-600'></div>
-          <p className='mt-2 text-sm text-stone-500'>Loading insights...</p>
-        </div>
+        <LoadingSpinner
+          size='medium'
+          color='amber'
+          message='Loading cost optimization insights...'
+        />
       </div>
     );
   }
 
+  // Handle error state with retry option
+  if (error) {
+    return (
+      <div className='flex items-center justify-center h-64'>
+        <ErrorMessage
+          message='Unable to load cost optimization insights. Please try again.'
+          onRetry={refreshData}
+        />
+      </div>
+    );
+  }
+
+  // Handle empty state
   if (!costInsights.length) {
     return (
       <div className='p-6 bg-white rounded-lg border border-stone-200 text-center'>

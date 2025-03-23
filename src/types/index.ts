@@ -3,7 +3,7 @@ import * as DocumentationTypes from './documentationTypes';
 import * as EnumTypes from './enums';
 import * as MaterialTypes from './materialTypes';
 import * as PatternTypes from './patternTypes';
-import * as PickingListTypes from './pickinglist';
+import * as PickingListTypes from './pickingListTypes';
 import * as ProjectTemplateTypes from './projectTemplate';
 import * as PurchaseTypes from './purchaseTypes';
 import * as RecurringProjectTypes from './recurringProject';
@@ -12,14 +12,15 @@ import * as ToolTypes from './toolType';
 
 // Export additional sidebar types
 export type { NavItem, NavSection } from '../components/layout/Sidebar';
+
 // Export documentation types
 export {
   DocumentationCategory,
   ResourceType,
   SkillLevel,
 } from './documentationTypes';
+
 export type {
-  CategoryDefinition,
   DocumentationResource,
   DocumentationSearchQuery,
   DocumentationSearchResult,
@@ -28,9 +29,20 @@ export type {
   WorkflowGuide,
   WorkflowStep,
 } from './documentationTypes';
+
+// Add a workaround for CategoryDefinition if it's not already exported
+export interface CategoryDefinition {
+  id: string;
+  name: string;
+  description?: string;
+  // Add other properties as needed based on your actual implementation
+}
+
 // Export non-conflicting model types
 export type { Project, Purchase, Sale } from './models';
+
 export { PatternFileType } from './patternTypes';
+
 // Export pattern types
 export type {
   Component,
@@ -39,15 +51,18 @@ export type {
   Pattern,
   PatternFilters,
 } from './patternTypes';
+
 // Export picking list types
-export { PickingListStatus } from './pickinglist';
+export { PickingListStatus } from './pickingListTypes';
 export type {
   PickingList,
   PickingListFilters,
   PickingListItem,
-} from './pickinglist';
+} from './pickingListTypes';
+
 // Export project template types
 export type { ProjectTemplate } from './projectTemplate';
+
 // Export project timeline specific types
 export { ProjectStatus } from './projectTimeline';
 export type {
@@ -55,12 +70,14 @@ export type {
   ProjectTimelineProps,
   TimelineTask,
 } from './projectTimeline';
+
 // Export purchase order types
 export type {
   PurchaseOrder,
   PurchaseOrderFilters,
   PurchaseOrderItem,
 } from './purchaseTypes';
+
 // Export recurring project types
 export { DayOfWeek, RecurrenceFrequency } from './recurringProject';
 export type {
@@ -69,6 +86,7 @@ export type {
   RecurringProject,
   RecurringProjectFilter,
 } from './recurringProject';
+
 // Export storage types
 export { SectionType, StorageLocationType, StorageStatus } from './storage';
 export type {
@@ -79,8 +97,10 @@ export type {
   StorageMove,
   StorageUtilization,
 } from './storage';
+
 // Export supplier types
 export type { Supplier, SupplierFilters } from './supplierTypes';
+
 // Export namespaces
 export {
   EnumTypes,

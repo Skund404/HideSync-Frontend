@@ -1,9 +1,22 @@
-import React, { useEffect, useState } from 'react';
+// src/components/dashboard/RevenueOverview.tsx
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSales } from '../../context/SalesContext';
 import { Sale } from '../../types/salesTypes';
+import ErrorMessage from '../common/ErrorMessage';
+import LoadingSpinner from '../common/LoadingSpinner';
+
+// Define local formatting function since it seems to be missing in formatter.ts
+const formatCurrency = (amount: number): string => {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+};
 
 const RevenueOverview: React.FC = () => {
-  const { sales, completedSales, loading } = useSales();
+  const { sales, completedSales, loading, error } = useSales();
   const [period, setPeriod] = useState<'week' | 'month' | 'quarter'>('month');
   const [revenueData, setRevenueData] = useState<
     Array<{ date: string; revenue: number }>
@@ -15,161 +28,192 @@ const RevenueOverview: React.FC = () => {
     platformFees: 0,
     changePercentage: 0,
   });
+  const [processingData, setProcessingData] = useState(false);
 
-  useEffect(() => {
-    if (loading) return;
-
-    // Combine all sales
-    const allSales = [...sales, ...completedSales];
-
-    // Set date range based on selected period
-    const endDate = new Date();
-    let startDate: Date;
-    let previousStartDate: Date;
-    let groupByFormat: 'day' | 'week' | 'month' = 'day';
-
-    switch (period) {
-      case 'week':
-        startDate = new Date(endDate);
-        startDate.setDate(endDate.getDate() - 7);
-        previousStartDate = new Date(startDate);
-        previousStartDate.setDate(startDate.getDate() - 7);
-        groupByFormat = 'day';
-        break;
-      case 'month':
-        startDate = new Date(endDate);
-        startDate.setMonth(endDate.getMonth() - 1);
-        previousStartDate = new Date(startDate);
-        previousStartDate.setMonth(startDate.getMonth() - 1);
-        groupByFormat = 'day';
-        break;
-      case 'quarter':
-        startDate = new Date(endDate);
-        startDate.setMonth(endDate.getMonth() - 3);
-        previousStartDate = new Date(startDate);
-        previousStartDate.setMonth(startDate.getMonth() - 3);
-        groupByFormat = 'week';
-        break;
-      default:
-        startDate = new Date(endDate);
-        startDate.setMonth(endDate.getMonth() - 1);
-        previousStartDate = new Date(startDate);
-        previousStartDate.setMonth(startDate.getMonth() - 1);
-        groupByFormat = 'day';
-    }
-
-    // Filter sales for current period
-    const currentPeriodSales = allSales.filter((sale) => {
-      const saleDate = new Date(sale.createdAt);
-      return saleDate >= startDate && saleDate <= endDate;
-    });
-
-    // Filter sales for previous period (for comparison)
-    const previousPeriodSales = allSales.filter((sale) => {
-      const saleDate = new Date(sale.createdAt);
-      return saleDate >= previousStartDate && saleDate < startDate;
-    });
-
-    // Calculate current period metrics
-    const totalRevenue = currentPeriodSales.reduce(
-      (sum, sale) => sum + sale.total,
-      0
-    );
-    const averageOrderValue =
-      currentPeriodSales.length > 0
-        ? totalRevenue / currentPeriodSales.length
-        : 0;
-    const platformFees = currentPeriodSales.reduce(
-      (sum, sale) => sum + (sale.platformFees || 0),
-      0
-    );
-    const netRevenue = totalRevenue - platformFees;
-
-    // Calculate previous period metrics for comparison
-    const previousRevenue = previousPeriodSales.reduce(
-      (sum, sale) => sum + sale.total,
-      0
-    );
-    const changePercentage =
-      previousRevenue > 0
-        ? ((totalRevenue - previousRevenue) / previousRevenue) * 100
-        : 0;
-
-    // Group sales by date format for the chart
-    const groupedData = groupSalesByDate(currentPeriodSales, groupByFormat);
-
-    // Update state
-    setRevenueData(groupedData);
-    setMetrics({
-      totalRevenue,
-      averageOrderValue,
-      netRevenue,
-      platformFees,
-      changePercentage,
-    });
-  }, [sales, completedSales, period, loading]);
-
-  // Helper function to group sales by date format
-  const groupSalesByDate = (
-    sales: Sale[],
-    format: 'day' | 'week' | 'month'
-  ): Array<{ date: string; revenue: number }> => {
-    const grouped: Record<string, number> = {};
-
-    sales.forEach((sale) => {
-      const saleDate = new Date(sale.createdAt);
-      let dateKey: string;
-
-      if (format === 'day') {
-        dateKey = saleDate.toISOString().slice(0, 10); // YYYY-MM-DD
-      } else if (format === 'week') {
-        // Get ISO week number
-        const weekNumber = getWeekNumber(saleDate);
-        dateKey = `Week ${weekNumber}`;
-      } else {
-        dateKey = `${saleDate.getFullYear()}-${String(
-          saleDate.getMonth() + 1
-        ).padStart(2, '0')}`;
-      }
-
-      grouped[dateKey] = (grouped[dateKey] || 0) + sale.total;
-    });
-
-    // Convert to array format and sort by date
-    return Object.entries(grouped)
-      .map(([date, revenue]) => ({ date, revenue }))
-      .sort((a, b) => a.date.localeCompare(b.date));
-  };
-
-  // Helper function to get ISO week number
-  const getWeekNumber = (date: Date): number => {
+  // Helper function to get ISO week number - memoized with useCallback
+  const getWeekNumber = useCallback((date: Date): number => {
     const d = new Date(
       Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
     );
     d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
     const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
     return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-  };
+  }, []);
 
-  // Helper function to format currency
-  const formatCurrency = (amount: number): string => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+  // Helper function to group sales by date format - memoized with useCallback
+  const groupSalesByDate = useCallback(
+    (
+      salesData: Sale[],
+      format: 'day' | 'week' | 'month'
+    ): Array<{ date: string; revenue: number }> => {
+      const grouped: Record<string, number> = {};
 
-  // Calculate maximum value for chart scaling
-  const maxRevenue = Math.max(...revenueData.map((d) => d.revenue), 1);
+      salesData.forEach((sale) => {
+        const saleDate = new Date(sale.createdAt);
+        let dateKey: string;
+
+        if (format === 'day') {
+          dateKey = saleDate.toISOString().slice(0, 10); // YYYY-MM-DD
+        } else if (format === 'week') {
+          // Get ISO week number
+          const weekNumber = getWeekNumber(saleDate);
+          dateKey = `Week ${weekNumber}`;
+        } else {
+          dateKey = `${saleDate.getFullYear()}-${String(
+            saleDate.getMonth() + 1
+          ).padStart(2, '0')}`;
+        }
+
+        grouped[dateKey] = (grouped[dateKey] || 0) + sale.totalAmount;
+      });
+
+      // Convert to array format and sort by date
+      return Object.entries(grouped)
+        .map(([date, revenue]) => ({ date, revenue }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+    },
+    [getWeekNumber]
+  );
+
+  useEffect(() => {
+    if (loading) return;
+
+    setProcessingData(true);
+
+    try {
+      // Combine all sales
+      const allSales = [...sales, ...completedSales];
+
+      // Set date range based on selected period
+      const endDate = new Date();
+      let startDate: Date;
+      let previousStartDate: Date;
+      let groupByFormat: 'day' | 'week' | 'month' = 'day';
+
+      switch (period) {
+        case 'week':
+          startDate = new Date(endDate);
+          startDate.setDate(endDate.getDate() - 7);
+          previousStartDate = new Date(startDate);
+          previousStartDate.setDate(startDate.getDate() - 7);
+          groupByFormat = 'day';
+          break;
+        case 'month':
+          startDate = new Date(endDate);
+          startDate.setMonth(endDate.getMonth() - 1);
+          previousStartDate = new Date(startDate);
+          previousStartDate.setMonth(startDate.getMonth() - 1);
+          groupByFormat = 'day';
+          break;
+        case 'quarter':
+          startDate = new Date(endDate);
+          startDate.setMonth(endDate.getMonth() - 3);
+          previousStartDate = new Date(startDate);
+          previousStartDate.setMonth(startDate.getMonth() - 3);
+          groupByFormat = 'week';
+          break;
+        default:
+          startDate = new Date(endDate);
+          startDate.setMonth(endDate.getMonth() - 1);
+          previousStartDate = new Date(startDate);
+          previousStartDate.setMonth(startDate.getMonth() - 1);
+          groupByFormat = 'day';
+      }
+
+      // Filter sales for current and previous periods - memoized this filtering
+      const currentPeriodSales = allSales.filter((sale) => {
+        const saleDate = new Date(sale.createdAt);
+        return saleDate >= startDate && saleDate <= endDate;
+      });
+
+      const previousPeriodSales = allSales.filter((sale) => {
+        const saleDate = new Date(sale.createdAt);
+        return saleDate >= previousStartDate && saleDate < startDate;
+      });
+
+      // Calculate metrics
+      const totalRevenue = currentPeriodSales.reduce(
+        (sum, sale) => sum + sale.totalAmount,
+        0
+      );
+
+      const averageOrderValue =
+        currentPeriodSales.length > 0
+          ? totalRevenue / currentPeriodSales.length
+          : 0;
+
+      const platformFees = currentPeriodSales.reduce(
+        (sum, sale) => sum + (sale.platformFees || 0),
+        0
+      );
+
+      const netRevenue = totalRevenue - platformFees;
+
+      // Calculate previous period metrics for comparison
+      const previousRevenue = previousPeriodSales.reduce(
+        (sum, sale) => sum + sale.totalAmount,
+        0
+      );
+
+      const changePercentage =
+        previousRevenue > 0
+          ? ((totalRevenue - previousRevenue) / previousRevenue) * 100
+          : 0;
+
+      // Group sales by date format for the chart
+      const groupedData = groupSalesByDate(currentPeriodSales, groupByFormat);
+
+      // Update state
+      setRevenueData(groupedData);
+      setMetrics({
+        totalRevenue,
+        averageOrderValue,
+        netRevenue,
+        platformFees,
+        changePercentage,
+      });
+    } catch (err) {
+      console.error('Error processing revenue data:', err);
+    } finally {
+      setProcessingData(false);
+    }
+  }, [sales, completedSales, period, loading, groupSalesByDate]);
+
+  // Memoize the maximum revenue calculation for chart scaling
+  const maxRevenue = useMemo(
+    () => Math.max(...revenueData.map((d) => d.revenue), 1),
+    [revenueData]
+  );
+
+  // Memoize the period display text
+  const periodDisplayText = useMemo(() => {
+    switch (period) {
+      case 'week':
+        return 'Last 7 days';
+      case 'month':
+        return 'Last 30 days';
+      case 'quarter':
+        return 'Last 3 months';
+      default:
+        return '';
+    }
+  }, [period]);
 
   if (loading) {
     return (
-      <div className='bg-white shadow rounded-lg p-4 animate-pulse'>
-        <div className='h-6 bg-stone-200 rounded mb-4 w-1/3'></div>
-        <div className='h-40 bg-stone-200 rounded mb-4 w-full'></div>
-        <div className='h-4 bg-stone-200 rounded w-full'></div>
+      <div className='bg-white shadow rounded-lg p-4'>
+        <LoadingSpinner color='amber' message='Loading revenue data...' />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className='bg-white shadow rounded-lg p-4'>
+        <ErrorMessage
+          message={`Failed to load revenue data: ${error}`}
+          onRetry={() => {}} // Add a retry function if available in your context
+        />
       </div>
     );
   }
@@ -181,11 +225,7 @@ const RevenueOverview: React.FC = () => {
           <h3 className='text-lg font-medium text-stone-900'>
             Revenue Overview
           </h3>
-          <p className='text-sm text-stone-500'>
-            {period === 'week' && 'Last 7 days'}
-            {period === 'month' && 'Last 30 days'}
-            {period === 'quarter' && 'Last 3 months'}
-          </p>
+          <p className='text-sm text-stone-500'>{periodDisplayText}</p>
         </div>
         <div className='flex space-x-2'>
           <button
@@ -271,9 +311,15 @@ const RevenueOverview: React.FC = () => {
         </div>
       </div>
 
-      {/* Revenue Chart */}
+      {/* Revenue Chart - Show loading spinner when processing data */}
       <div className='mt-4 h-40 relative'>
-        {revenueData.length === 0 ? (
+        {processingData ? (
+          <LoadingSpinner
+            size='small'
+            color='amber'
+            message='Processing data...'
+          />
+        ) : revenueData.length === 0 ? (
           <div className='absolute inset-0 flex items-center justify-center text-stone-400'>
             No revenue data available for this period
           </div>

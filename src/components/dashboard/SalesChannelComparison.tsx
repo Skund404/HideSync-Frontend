@@ -1,6 +1,19 @@
-import React, { useState } from 'react';
+// src/components/dashboard/SalesChannelComparison.tsx
+import React, { useMemo, useState } from 'react';
 import { useSales } from '../../context/SalesContext';
 import { SalesChannel } from '../../types/salesTypes';
+import ErrorMessage from '../common/ErrorMessage';
+import LoadingSpinner from '../common/LoadingSpinner';
+
+// Define local formatting function since it seems to be missing in formatter.ts
+const formatCurrency = (amount: number): string => {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+};
 
 // Define the type for channel metrics data
 interface ChannelMetricData {
@@ -12,75 +25,93 @@ interface ChannelMetricData {
 type ChannelMetrics = Record<string, ChannelMetricData>;
 
 const SalesChannelComparison: React.FC = () => {
-  const { getChannelMetrics, loading } = useSales();
+  const { getChannelMetrics, loading, error } = useSales();
   const [view, setView] = useState<'revenue' | 'orders' | 'fees'>('revenue');
 
-  // Get metrics for each sales channel
-  const channelMetrics: ChannelMetrics = !loading ? getChannelMetrics() : {};
+  // Memoize channel metrics to ensure stable reference
+  const channelMetrics = useMemo(() => {
+    return !loading ? getChannelMetrics() : ({} as ChannelMetrics);
+  }, [loading, getChannelMetrics]);
 
-  // Filter active channels with data
-  const activeChannels = Object.entries(channelMetrics)
-    .filter(([_, data]) => (data as ChannelMetricData).count > 0)
-    .sort((a, b) => {
-      // Sort based on the current view
-      const dataA = a[1] as ChannelMetricData;
-      const dataB = b[1] as ChannelMetricData;
+  // Memoize the filtered and sorted active channels
+  const activeChannels = useMemo(() => {
+    if (loading || Object.keys(channelMetrics).length === 0) return [];
 
-      if (view === 'revenue') {
-        return dataB.revenue - dataA.revenue;
-      } else if (view === 'orders') {
-        return dataB.count - dataA.count;
-      } else {
-        return dataB.fees - dataA.fees;
-      }
-    }) as [string, ChannelMetricData][];
+    return Object.entries(channelMetrics)
+      .filter(([_, data]) => (data as ChannelMetricData).count > 0)
+      .sort((a, b) => {
+        // Sort based on the current view
+        const dataA = a[1] as ChannelMetricData;
+        const dataB = b[1] as ChannelMetricData;
 
-  // Calculate totals for percentage calculation
-  const totalOrders = activeChannels.reduce(
-    (sum, [_, data]) => sum + data.count,
-    0
+        if (view === 'revenue') {
+          return dataB.revenue - dataA.revenue;
+        } else if (view === 'orders') {
+          return dataB.count - dataA.count;
+        } else {
+          return dataB.fees - dataA.fees;
+        }
+      }) as [string, ChannelMetricData][];
+  }, [channelMetrics, view, loading]);
+
+  // Memoize the total calculations
+  const totals = useMemo(() => {
+    const totalOrders = activeChannels.reduce(
+      (sum, [_, data]) => sum + data.count,
+      0
+    );
+    const totalRevenue = activeChannels.reduce(
+      (sum, [_, data]) => sum + data.revenue,
+      0
+    );
+    const totalFees = activeChannels.reduce(
+      (sum, [_, data]) => sum + data.fees,
+      0
+    );
+
+    return { totalOrders, totalRevenue, totalFees };
+  }, [activeChannels]);
+
+  // Memoize the maximum value for scaling bars correctly
+  const maxValue = useMemo(
+    () =>
+      Math.max(
+        ...activeChannels.map(([_, data]) =>
+          view === 'revenue'
+            ? data.revenue
+            : view === 'orders'
+            ? data.count
+            : data.fees
+        ),
+        0.1 // Prevent division by zero
+      ),
+    [activeChannels, view]
   );
-  const totalRevenue = activeChannels.reduce(
-    (sum, [_, data]) => sum + data.revenue,
-    0
-  );
-  const totalFees = activeChannels.reduce(
-    (sum, [_, data]) => sum + data.fees,
-    0
-  );
 
-  // Get the highest value for the selected view to scale bars correctly
-  const maxValue = Math.max(
-    ...activeChannels.map(([_, data]) =>
-      view === 'revenue'
-        ? data.revenue
-        : view === 'orders'
-        ? data.count
-        : data.fees
-    ),
-    0.1 // Prevent division by zero
-  );
-
-  // Helper function to format currency
-  const formatCurrency = (amount: number): string => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
+  // Define a type for channel config to avoid type errors
+  type ChannelIconConfig = {
+    icon: string;
+    color: string;
   };
 
-  // Channel icons and colors
-  const channelConfig: Record<string, { icon: string; color: string }> = {
-    [SalesChannel.SHOPIFY]: { icon: '🛍️', color: 'bg-green-500' },
-    [SalesChannel.ETSY]: { icon: '🧶', color: 'bg-orange-500' },
-    [SalesChannel.AMAZON]: { icon: '📦', color: 'bg-yellow-500' },
-    [SalesChannel.EBAY]: { icon: '🏷️', color: 'bg-red-500' },
-    [SalesChannel.DIRECT]: { icon: '🤝', color: 'bg-blue-500' },
-    [SalesChannel.WHOLESALE]: { icon: '🏭', color: 'bg-purple-500' },
-    [SalesChannel.CUSTOM_ORDER]: { icon: '✨', color: 'bg-indigo-500' },
+  type ChannelConfigType = {
+    [key in SalesChannel]: ChannelIconConfig;
   };
+
+  // Memoize channel configuration with proper typing
+  const channelConfig = useMemo<ChannelConfigType>(
+    () => ({
+      [SalesChannel.SHOPIFY]: { icon: '🛍️', color: 'bg-green-500' },
+      [SalesChannel.ETSY]: { icon: '🧶', color: 'bg-orange-500' },
+      [SalesChannel.AMAZON]: { icon: '📦', color: 'bg-yellow-500' },
+      [SalesChannel.EBAY]: { icon: '🏷️', color: 'bg-red-500' },
+      [SalesChannel.DIRECT]: { icon: '🤝', color: 'bg-blue-500' },
+      [SalesChannel.WHOLESALE]: { icon: '🏭', color: 'bg-purple-500' },
+      [SalesChannel.CUSTOM_ORDER]: { icon: '✨', color: 'bg-indigo-500' },
+      [SalesChannel.OTHER]: { icon: '🛒', color: 'bg-stone-500' },
+    }),
+    []
+  );
 
   // Format channel name for display
   const formatChannelName = (channel: string): string => {
@@ -92,13 +123,19 @@ const SalesChannelComparison: React.FC = () => {
 
   if (loading) {
     return (
-      <div className='bg-white shadow rounded-lg p-4 animate-pulse'>
-        <div className='h-6 bg-stone-200 rounded mb-4 w-1/3'></div>
-        <div className='space-y-4'>
-          <div className='h-8 bg-stone-200 rounded w-full'></div>
-          <div className='h-8 bg-stone-200 rounded w-3/4'></div>
-          <div className='h-8 bg-stone-200 rounded w-2/3'></div>
-        </div>
+      <div className='bg-white shadow rounded-lg p-4'>
+        <LoadingSpinner color='amber' message='Loading channel data...' />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className='bg-white shadow rounded-lg p-4'>
+        <ErrorMessage
+          message={`Failed to load sales channel data: ${error}`}
+          onRetry={() => {}} // Add a retry function if available in context
+        />
       </div>
     );
   }
@@ -162,10 +199,10 @@ const SalesChannelComparison: React.FC = () => {
           // Calculate percentage based on current view
           const percentage =
             view === 'revenue'
-              ? (data.revenue / totalRevenue) * 100
+              ? (data.revenue / totals.totalRevenue) * 100
               : view === 'orders'
-              ? (data.count / totalOrders) * 100
-              : (data.fees / totalFees) * 100;
+              ? (data.count / totals.totalOrders) * 100
+              : (data.fees / totals.totalFees) * 100;
 
           // Calculate width percentage for the bar with a max of 100%
           const barWidth =
@@ -175,8 +212,10 @@ const SalesChannelComparison: React.FC = () => {
               ? (data.count / maxValue) * 100
               : (data.fees / maxValue) * 100;
 
-          // Get channel configuration
-          const config = channelConfig[channel] || {
+          // Get channel configuration with type safety
+          // Use type assertion to tell TypeScript this is a valid SalesChannel
+          const validChannel = channel as SalesChannel;
+          const config = channelConfig[validChannel] || {
             icon: '🛒',
             color: 'bg-stone-500',
           };
@@ -212,9 +251,10 @@ const SalesChannelComparison: React.FC = () => {
 
       <div className='mt-4 text-sm text-stone-500 flex justify-between items-center'>
         <div>
-          {view === 'revenue' && `Total: ${formatCurrency(totalRevenue)}`}
-          {view === 'orders' && `Total: ${totalOrders} orders`}
-          {view === 'fees' && `Total: ${formatCurrency(totalFees)}`}
+          {view === 'revenue' &&
+            `Total: ${formatCurrency(totals.totalRevenue)}`}
+          {view === 'orders' && `Total: ${totals.totalOrders} orders`}
+          {view === 'fees' && `Total: ${formatCurrency(totals.totalFees)}`}
         </div>
         <a
           href='/sales?view=settings'

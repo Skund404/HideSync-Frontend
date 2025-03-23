@@ -1,3 +1,4 @@
+// src/components/financial/workshop/WorkshopCalculator.tsx
 import {
   Calculator,
   Clock,
@@ -8,14 +9,22 @@ import {
 import React, { useState } from 'react';
 import { useFinancial } from '../../../context/FinancialContext';
 import { formatCurrency } from '../../../utils/financialHelpers';
+import LoadingSpinner from '../../common/LoadingSpinner';
+import ErrorMessage from '../../common/ErrorMessage';
 
 const WorkshopCalculator: React.FC = () => {
-  const { calculatorInputs } = useFinancial();
+  const { 
+    calculatorInputs, 
+    calculatorLoading, 
+    recalculatePricing, 
+    error 
+  } = useFinancial();
 
   // Simple mode states
   const [materialCost, setMaterialCost] = useState('75');
   const [hardwareCost, setHardwareCost] = useState('25');
   const [hours, setHours] = useState('3');
+  const [isCalculating, setIsCalculating] = useState(false);
 
   // Derived values
   const hourlyRate = calculatorInputs.laborRate;
@@ -53,6 +62,45 @@ const WorkshopCalculator: React.FC = () => {
     setHardwareCost('25');
     setHours('3');
   };
+
+  // Handle recalculation with the workshop calculator values
+  const handleRecalculate = async () => {
+    setIsCalculating(true);
+    try {
+      // In a real implementation, you might want to update calculator inputs in the context
+      // and then trigger recalculation
+      await recalculatePricing();
+    } catch (err) {
+      console.error('Calculation error:', err);
+    } finally {
+      setIsCalculating(false);
+    }
+  };
+
+  // If there's an error with the calculator inputs from the context
+  if (error) {
+    return (
+      <div className="mb-4">
+        <ErrorMessage 
+          message="There was a problem loading the calculator settings. Using default values instead." 
+          onRetry={recalculatePricing}
+        />
+      </div>
+    );
+  }
+
+  // If the calculator is in a loading state
+  if (calculatorLoading) {
+    return (
+      <div className="flex items-center justify-center h-40">
+        <LoadingSpinner 
+          size="small" 
+          color="amber" 
+          message="Loading calculator data..." 
+        />
+      </div>
+    );
+  }
 
   return (
     <div className='max-w-md mx-auto'>
@@ -173,14 +221,33 @@ const WorkshopCalculator: React.FC = () => {
           </div>
         </div>
 
-        {/* Reset Button */}
-        <button
-          onClick={resetValues}
-          className='flex items-center text-xs text-amber-600 hover:text-amber-700 mt-3'
-        >
-          <RefreshCw className='h-3 w-3 mr-1' />
-          Reset to Defaults
-        </button>
+        {/* Actions */}
+        <div className="flex justify-between items-center mt-4">
+          {/* Reset Button */}
+          <button
+            onClick={resetValues}
+            className='flex items-center text-xs text-amber-600 hover:text-amber-700'
+          >
+            <RefreshCw className='h-3 w-3 mr-1' />
+            Reset to Defaults
+          </button>
+          
+          {/* Recalculate Button */}
+          <button
+            onClick={handleRecalculate}
+            disabled={isCalculating}
+            className="flex items-center text-xs bg-amber-100 hover:bg-amber-200 text-amber-800 px-2 py-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isCalculating ? (
+              <>
+                <div className="animate-spin h-3 w-3 border-2 border-amber-800 border-t-transparent rounded-full mr-1"></div>
+                Calculating...
+              </>
+            ) : (
+              <>Recalculate Settings</>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Calculation Results */}

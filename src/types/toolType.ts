@@ -1,13 +1,16 @@
 // src/types/toolTypes.ts
 //
 // This file contains type definitions for the Tool Management module of HideSync.
-// It defines the data models for tools, tool maintenance records, and tool checkout records
-// that align with the backend data model from the ER diagram.
-//
-// These types support the Tool Management UI components and context.
+// It defines the data models for tools, tool maintenance records, tool checkout records,
+// and tool lists that align with the backend data model from the ER diagram.
+
+// -------------------------------------------------
+// Enums
+// -------------------------------------------------
 
 /**
- * Enum for tool categories/types
+ * Enum for tool categories/types.
+ * (Values based on the ER diagram: e.g., CUTTING, PUNCHING, STITCHING, etc.)
  */
 export enum ToolCategory {
   CUTTING = 'CUTTING',
@@ -19,7 +22,8 @@ export enum ToolCategory {
 }
 
 /**
- * Enum for tool status
+ * Enum for tool status.
+ * (ER diagram defines statuses such as IN_STOCK, CHECKED_OUT, MAINTENANCE, etc.)
  */
 export enum ToolStatus {
   IN_STOCK = 'IN_STOCK',
@@ -30,7 +34,7 @@ export enum ToolStatus {
 }
 
 /**
- * Enum for tool checkout status
+ * Enum for tool checkout status.
  */
 export enum ToolCheckoutStatus {
   CHECKED_OUT = 'Checked Out',
@@ -42,7 +46,7 @@ export enum ToolCheckoutStatus {
 }
 
 /**
- * Enum for maintenance status
+ * Enum for maintenance status.
  */
 export enum MaintenanceStatus {
   SCHEDULED = 'Scheduled',
@@ -51,8 +55,20 @@ export enum MaintenanceStatus {
   WAITING_PARTS = 'Waiting for Parts',
 }
 
+// -------------------------------------------------
+// Interfaces
+// -------------------------------------------------
+
 /**
- * Interface for Tool entity
+ * Interface for Tool entity.
+ *
+ * This model follows the ER diagram for Tool, which includes:
+ *   - id, name, description, category, brand, model, serialNumber, purchasePrice,
+ *     purchaseDate, specifications, status, location, image, lastMaintenance,
+ *     nextMaintenance, maintenanceInterval, supplier, supplierId, checkedOutTo,
+ *     checkedOutDate, and dueDate.
+ *
+ * UI-specific properties are included at the end for client-side use.
  */
 export interface Tool {
   id: number;
@@ -64,28 +80,33 @@ export interface Tool {
   serialNumber: string;
   purchasePrice: number;
   purchaseDate: string;
-  supplier?: string;
+  supplier: string;
   supplierId?: number;
   specifications: string;
   status: ToolStatus;
-  lastMaintenance: string;
-  nextMaintenance: string;
-  maintenanceInterval: number; // in days
   location: string;
   image?: string;
+  lastMaintenance: string;
+  nextMaintenance: string;
+  maintenanceInterval: number;
+  // Fields below are part of the ER diagram:
+  checkedOutTo: string;
+  checkedOutDate: string;
+  dueDate: string;
 
-  // UI-specific properties (not in backend model)
-  checkedOutTo?: string;
-  checkedOutDate?: string;
-  dueDate?: string;
-  reportedLostDate?: string;
+  // UI Extensions for additional client-side data (not in backend model, but needed for UI)
   reportedBy?: string;
   damageReport?: string;
   reportedDamagedDate?: string;
+  reportedLostDate?: string;
 }
 
 /**
- * Interface for ToolMaintenance entity
+ * Interface for ToolMaintenance entity.
+ *
+ * This model follows the ER diagram:
+ *  - id, toolId, toolName, maintenanceType, date, performedBy, cost, internalService,
+ *    details, parts, conditionBefore, conditionAfter, status, nextDate, createdAt, updatedAt.
  */
 export interface ToolMaintenance {
   id: number;
@@ -107,7 +128,12 @@ export interface ToolMaintenance {
 }
 
 /**
- * Interface for ToolCheckout entity
+ * Interface for ToolCheckout entity.
+ *
+ * According to the ER diagram this includes:
+ *  - id, toolId, toolName, checkedOutBy, checkedOutDate, dueDate, returnedDate,
+ *    projectId, projectName, notes, status, conditionBefore, conditionAfter,
+ *    issueDescription, createdAt and updatedAt.
  */
 export interface ToolCheckout {
   id: number;
@@ -129,7 +155,9 @@ export interface ToolCheckout {
 }
 
 /**
- * Interface for Tool List entity, used for project planning
+ * Interface for Tool List entity, used for project planning.
+ *
+ * While not defined in the core ER diagram, this extension provides a way to group tools for a project.
  */
 export interface ToolList {
   id: number;
@@ -141,7 +169,7 @@ export interface ToolList {
 }
 
 /**
- * Interface for Tool List Item entity
+ * Interface for Tool List Item entity.
  */
 export interface ToolListItem {
   id: number;

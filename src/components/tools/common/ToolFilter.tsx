@@ -2,69 +2,99 @@
 //
 // A filter component for the Tool Management module that allows filtering
 // by various tool properties such as category, status, and maintenance status.
+// Updated to work with API integration.
 
+import { useTools } from '@/context/ToolContext';
+import { ToolFilters } from '@/services/tool-service';
 import { ToolCategory, ToolStatus } from '@/types/toolType';
 import { Filter, X } from 'lucide-react';
-import React from 'react';
-
-interface FilterState {
-  category?: ToolCategory;
-  status?: ToolStatus;
-  maintenanceStatus?: 'upcoming' | 'overdue' | 'current';
-  searchTerm?: string;
-}
+import React, { useRef, useState } from 'react';
 
 interface ToolFilterProps {
-  filters: FilterState;
-  setFilters: (filters: FilterState) => void;
+  onFilterChange: (filters: ToolFilters) => void;
+  initialFilters?: ToolFilters;
 }
 
-const ToolFilter: React.FC<ToolFilterProps> = ({ filters, setFilters }) => {
+const ToolFilter: React.FC<ToolFilterProps> = ({
+  onFilterChange,
+  initialFilters = {},
+}) => {
+  const [filters, setFilters] = useState<ToolFilters>(initialFilters);
+  const { loading } = useTools();
+  // Use useRef to properly manage the search timeout
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value as ToolCategory | '';
-    setFilters({
+    const updatedFilters = {
       ...filters,
       category: value === '' ? undefined : (value as ToolCategory),
-    });
+    };
+    setFilters(updatedFilters);
+    onFilterChange(updatedFilters);
   };
 
   const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value as ToolStatus | '';
-    setFilters({
+    const updatedFilters = {
       ...filters,
       status: value === '' ? undefined : (value as ToolStatus),
-    });
+    };
+    setFilters(updatedFilters);
+    onFilterChange(updatedFilters);
   };
 
   const handleMaintenanceStatusChange = (
     e: React.ChangeEvent<HTMLSelectElement>
   ) => {
     const value = e.target.value as 'upcoming' | 'overdue' | 'current' | '';
-    setFilters({
+    const updatedFilters = {
       ...filters,
       maintenanceStatus:
         value === ''
           ? undefined
           : (value as 'upcoming' | 'overdue' | 'current'),
-    });
+    };
+    setFilters(updatedFilters);
+    onFilterChange(updatedFilters);
   };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFilters({
+    const value = e.target.value;
+    const updatedFilters = {
       ...filters,
-      searchTerm: e.target.value === '' ? undefined : e.target.value,
-    });
+      search: value === '' ? undefined : value,
+    };
+    setFilters(updatedFilters);
+
+    // Clear previous timeout if it exists
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    // Set new timeout for debounced search
+    searchTimeoutRef.current = setTimeout(() => {
+      onFilterChange(updatedFilters);
+    }, 500);
   };
 
-  const clearFilters = () => {
-    setFilters({});
+  const clearFilter = (filterName: keyof ToolFilters) => {
+    const updatedFilters = { ...filters, [filterName]: undefined };
+    setFilters(updatedFilters);
+    onFilterChange(updatedFilters);
+  };
+
+  const clearAllFilters = () => {
+    const emptyFilters = {};
+    setFilters(emptyFilters);
+    onFilterChange(emptyFilters);
   };
 
   const hasActiveFilters =
     filters.category !== undefined ||
     filters.status !== undefined ||
     filters.maintenanceStatus !== undefined ||
-    (filters.searchTerm !== undefined && filters.searchTerm.length > 0);
+    (filters.search !== undefined && filters.search.length > 0);
 
   return (
     <div className='bg-white p-4 rounded-lg border border-stone-200 shadow-sm mb-6'>
@@ -75,8 +105,9 @@ const ToolFilter: React.FC<ToolFilterProps> = ({ filters, setFilters }) => {
         </h3>
         {hasActiveFilters && (
           <button
-            onClick={clearFilters}
+            onClick={clearAllFilters}
             className='text-xs text-stone-500 hover:text-stone-700 flex items-center'
+            disabled={loading.tools}
           >
             Clear All Filters
             <X className='h-3 w-3 ml-1' />
@@ -94,8 +125,9 @@ const ToolFilter: React.FC<ToolFilterProps> = ({ filters, setFilters }) => {
             type='text'
             placeholder='Search by name, brand...'
             className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
-            value={filters.searchTerm || ''}
+            value={filters.search || ''}
             onChange={handleSearchChange}
+            disabled={loading.tools}
           />
         </div>
 
@@ -108,6 +140,7 @@ const ToolFilter: React.FC<ToolFilterProps> = ({ filters, setFilters }) => {
             className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
             value={filters.category || ''}
             onChange={handleCategoryChange}
+            disabled={loading.tools}
           >
             <option value=''>All Categories</option>
             {Object.values(ToolCategory).map((category) => (
@@ -127,6 +160,7 @@ const ToolFilter: React.FC<ToolFilterProps> = ({ filters, setFilters }) => {
             className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
             value={filters.status || ''}
             onChange={handleStatusChange}
+            disabled={loading.tools}
           >
             <option value=''>All Statuses</option>
             {Object.values(ToolStatus).map((status) => (
@@ -146,6 +180,7 @@ const ToolFilter: React.FC<ToolFilterProps> = ({ filters, setFilters }) => {
             className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
             value={filters.maintenanceStatus || ''}
             onChange={handleMaintenanceStatusChange}
+            disabled={loading.tools}
           >
             <option value=''>All</option>
             <option value='current'>Current</option>
@@ -162,8 +197,9 @@ const ToolFilter: React.FC<ToolFilterProps> = ({ filters, setFilters }) => {
             <div className='bg-stone-100 text-stone-800 px-2 py-1 rounded-full text-xs flex items-center'>
               Category: {filters.category.replace('_', ' ')}
               <button
-                onClick={() => setFilters({ ...filters, category: undefined })}
+                onClick={() => clearFilter('category')}
                 className='ml-1 text-stone-500 hover:text-stone-700'
+                disabled={loading.tools}
               >
                 <X className='h-3 w-3' />
               </button>
@@ -174,8 +210,9 @@ const ToolFilter: React.FC<ToolFilterProps> = ({ filters, setFilters }) => {
             <div className='bg-stone-100 text-stone-800 px-2 py-1 rounded-full text-xs flex items-center'>
               Status: {filters.status.replace('_', ' ')}
               <button
-                onClick={() => setFilters({ ...filters, status: undefined })}
+                onClick={() => clearFilter('status')}
                 className='ml-1 text-stone-500 hover:text-stone-700'
+                disabled={loading.tools}
               >
                 <X className='h-3 w-3' />
               </button>
@@ -186,24 +223,22 @@ const ToolFilter: React.FC<ToolFilterProps> = ({ filters, setFilters }) => {
             <div className='bg-stone-100 text-stone-800 px-2 py-1 rounded-full text-xs flex items-center'>
               Maintenance: {filters.maintenanceStatus}
               <button
-                onClick={() =>
-                  setFilters({ ...filters, maintenanceStatus: undefined })
-                }
+                onClick={() => clearFilter('maintenanceStatus')}
                 className='ml-1 text-stone-500 hover:text-stone-700'
+                disabled={loading.tools}
               >
                 <X className='h-3 w-3' />
               </button>
             </div>
           )}
 
-          {filters.searchTerm && (
+          {filters.search && (
             <div className='bg-stone-100 text-stone-800 px-2 py-1 rounded-full text-xs flex items-center'>
-              Search: {filters.searchTerm}
+              Search: {filters.search}
               <button
-                onClick={() =>
-                  setFilters({ ...filters, searchTerm: undefined })
-                }
+                onClick={() => clearFilter('search')}
                 className='ml-1 text-stone-500 hover:text-stone-700'
+                disabled={loading.tools}
               >
                 <X className='h-3 w-3' />
               </button>

@@ -1,3 +1,4 @@
+// src/components/financial/platforms/PlatformPerformance.tsx
 import React from 'react';
 import { useFinancial } from '../../../context/FinancialContext';
 import {
@@ -6,23 +7,38 @@ import {
 } from '../../../utils/financialHelpers';
 import PlatformComparison from './PlatformComparison';
 import PlatformRevenueChart from './PlatformRevenueChart';
+import LoadingSpinner from '../../common/LoadingSpinner';
+import ErrorMessage from '../../common/ErrorMessage';
 
 const PlatformPerformance: React.FC = () => {
-  const { platformPerformance, loading } = useFinancial();
+  const { platformPerformance, loading, loadingState, error, refreshData } = useFinancial();
 
-  if (loading) {
+  // Show loading spinner when loading platform data
+  if (loading || loadingState.platformPerformance) {
     return (
       <div className='flex items-center justify-center h-64'>
-        <div className='text-center'>
-          <div className='inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-600'></div>
-          <p className='mt-2 text-sm text-stone-500'>
-            Loading platform data...
-          </p>
-        </div>
+        <LoadingSpinner
+          size="medium"
+          color="amber"
+          message="Loading platform data..."
+        />
       </div>
     );
   }
 
+  // Handle error state with retry option
+  if (error) {
+    return (
+      <div className='flex items-center justify-center h-64'>
+        <ErrorMessage 
+          message="Unable to load platform performance data. Please try again." 
+          onRetry={refreshData} 
+        />
+      </div>
+    );
+  }
+
+  // Handle empty state
   if (!platformPerformance.length) {
     return (
       <div className='p-6 bg-white rounded-lg shadow-sm border border-stone-200 text-center'>

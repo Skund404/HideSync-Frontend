@@ -1,16 +1,6 @@
 // src/components/documentation/printable/PrintPreview.tsx
-
-import {
-  Code,
-  Image,
-  PanelBottom,
-  PanelLeft,
-  PanelTop,
-  Printer,
-  Video,
-  X,
-} from 'lucide-react';
 import React, { useState } from 'react';
+import { Code, Download, Image, PanelBottom, PanelLeft, PanelTop, Printer, Video, X } from 'lucide-react';
 
 interface PrintPreviewProps {
   contentRef: React.RefObject<HTMLElement>;
@@ -29,11 +19,11 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
     includeVideos: false,
     includeHeaders: true,
     includeFooters: true,
-    orientation: 'portrait', // 'portrait' or 'landscape'
+    orientation: 'portrait' as 'portrait' | 'landscape',
     scale: 100, // percentage
   });
 
-  // Native print function without external dependencies
+  // Handle print function without external dependencies
   const handlePrint = () => {
     if (!contentRef.current) return;
 
@@ -77,7 +67,7 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
       }
       ${
         !printSettings.includeVideos
-          ? '.video-embed { display: none !important; }'
+          ? '.video-embed, [data-video] { display: none !important; }'
           : ''
       }
       ${
@@ -135,6 +125,7 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
               !printSettings.includeFooters ? 'style="display:none"' : ''
             }>
               <p>HideSync Documentation - Page <span class="pageNumber"></span></p>
+              <p>© ${new Date().getFullYear()} HideSync. All rights reserved.</p>
             </div>
           </div>
           <script>
@@ -153,29 +144,38 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
     printWindow.document.close();
   };
 
+  // Handle download as PDF if browser supports it
+  const handleDownload = () => {
+    // Browsers don't fully support PDF generation from HTML without libraries
+    // This is just a fallback that triggers the print dialog
+    // with emphasis on saving as PDF if the browser supports it
+    window.alert('To save as PDF, select "Save as PDF" in the print dialog that will open.');
+    handlePrint();
+  };
+
   return (
-    <div className='fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 overflow-y-auto'>
-      <div className='bg-white rounded-lg shadow-lg w-full max-w-4xl max-h-[90vh] flex flex-col'>
-        <div className='flex justify-between items-center border-b p-4'>
-          <h2 className='text-xl font-medium'>Print Preview</h2>
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-white rounded-lg shadow-lg w-full max-w-4xl max-h-[90vh] flex flex-col">
+        <div className="flex justify-between items-center border-b p-4">
+          <h2 className="text-xl font-medium">Print Preview</h2>
           <button
             onClick={onClose}
-            className='text-gray-500 hover:text-gray-700'
+            className="text-gray-500 hover:text-gray-700"
           >
             <X size={20} />
           </button>
         </div>
 
-        <div className='grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border-b'>
-          <div className='col-span-1'>
-            <h3 className='font-medium mb-2'>Print Settings</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border-b">
+          <div className="col-span-1">
+            <h3 className="font-medium mb-2">Print Settings</h3>
 
-            <div className='space-y-2'>
-              <div className='mb-4'>
-                <label className='block text-sm font-medium text-gray-700 mb-1'>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Orientation
                 </label>
-                <div className='flex space-x-2'>
+                <div className="flex space-x-2">
                   <button
                     className={`flex items-center px-3 py-2 border rounded ${
                       printSettings.orientation === 'portrait'
@@ -189,7 +189,7 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
                       })
                     }
                   >
-                    <PanelTop size={16} className='mr-1' />
+                    <PanelTop size={16} className="mr-1" />
                     Portrait
                   </button>
 
@@ -206,21 +206,21 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
                       })
                     }
                   >
-                    <PanelLeft size={16} className='mr-1' />
+                    <PanelLeft size={16} className="mr-1" />
                     Landscape
                   </button>
                 </div>
               </div>
 
-              <div className='mb-4'>
-                <label className='block text-sm font-medium text-gray-700 mb-1'>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Scale ({printSettings.scale}%)
                 </label>
                 <input
-                  type='range'
-                  min='50'
-                  max='150'
-                  step='10'
+                  type="range"
+                  min="50"
+                  max="150"
+                  step="10"
                   value={printSettings.scale}
                   onChange={(e) =>
                     setPrintSettings({
@@ -228,14 +228,14 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
                       scale: parseInt(e.target.value),
                     })
                   }
-                  className='w-full'
+                  className="w-full"
                 />
               </div>
 
-              <div className='space-y-2'>
-                <label className='flex items-center'>
+              <div className="space-y-2">
+                <label className="flex items-center">
                   <input
-                    type='checkbox'
+                    type="checkbox"
                     checked={printSettings.includeImages}
                     onChange={(e) =>
                       setPrintSettings({
@@ -243,17 +243,17 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
                         includeImages: e.target.checked,
                       })
                     }
-                    className='mr-2 h-4 w-4 text-amber-600 focus:ring-amber-500 rounded'
+                    className="mr-2 h-4 w-4 text-amber-600 focus:ring-amber-500 rounded"
                   />
-                  <span className='flex items-center'>
-                    <Image size={16} className='mr-1 text-gray-500' />
+                  <span className="flex items-center">
+                    <Image size={16} className="mr-1 text-gray-500" />
                     Include Images
                   </span>
                 </label>
 
-                <label className='flex items-center'>
+                <label className="flex items-center">
                   <input
-                    type='checkbox'
+                    type="checkbox"
                     checked={printSettings.includeCode}
                     onChange={(e) =>
                       setPrintSettings({
@@ -261,17 +261,17 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
                         includeCode: e.target.checked,
                       })
                     }
-                    className='mr-2 h-4 w-4 text-amber-600 focus:ring-amber-500 rounded'
+                    className="mr-2 h-4 w-4 text-amber-600 focus:ring-amber-500 rounded"
                   />
-                  <span className='flex items-center'>
-                    <Code size={16} className='mr-1 text-gray-500' />
+                  <span className="flex items-center">
+                    <Code size={16} className="mr-1 text-gray-500" />
                     Include Code Blocks
                   </span>
                 </label>
 
-                <label className='flex items-center'>
+                <label className="flex items-center">
                   <input
-                    type='checkbox'
+                    type="checkbox"
                     checked={printSettings.includeVideos}
                     onChange={(e) =>
                       setPrintSettings({
@@ -279,17 +279,17 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
                         includeVideos: e.target.checked,
                       })
                     }
-                    className='mr-2 h-4 w-4 text-amber-600 focus:ring-amber-500 rounded'
+                    className="mr-2 h-4 w-4 text-amber-600 focus:ring-amber-500 rounded"
                   />
-                  <span className='flex items-center'>
-                    <Video size={16} className='mr-1 text-gray-500' />
+                  <span className="flex items-center">
+                    <Video size={16} className="mr-1 text-gray-500" />
                     Include Video References
                   </span>
                 </label>
 
-                <label className='flex items-center'>
+                <label className="flex items-center">
                   <input
-                    type='checkbox'
+                    type="checkbox"
                     checked={printSettings.includeHeaders}
                     onChange={(e) =>
                       setPrintSettings({
@@ -297,17 +297,17 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
                         includeHeaders: e.target.checked,
                       })
                     }
-                    className='mr-2 h-4 w-4 text-amber-600 focus:ring-amber-500 rounded'
+                    className="mr-2 h-4 w-4 text-amber-600 focus:ring-amber-500 rounded"
                   />
-                  <span className='flex items-center'>
-                    <PanelTop size={16} className='mr-1 text-gray-500' />
+                  <span className="flex items-center">
+                    <PanelTop size={16} className="mr-1 text-gray-500" />
                     Include Headers
                   </span>
                 </label>
 
-                <label className='flex items-center'>
+                <label className="flex items-center">
                   <input
-                    type='checkbox'
+                    type="checkbox"
                     checked={printSettings.includeFooters}
                     onChange={(e) =>
                       setPrintSettings({
@@ -315,34 +315,25 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
                         includeFooters: e.target.checked,
                       })
                     }
-                    className='mr-2 h-4 w-4 text-amber-600 focus:ring-amber-500 rounded'
+                    className="mr-2 h-4 w-4 text-amber-600 focus:ring-amber-500 rounded"
                   />
-                  <span className='flex items-center'>
-                    <PanelBottom size={16} className='mr-1 text-gray-500' />
+                  <span className="flex items-center">
+                    <PanelBottom size={16} className="mr-1 text-gray-500" />
                     Include Footers
                   </span>
                 </label>
               </div>
             </div>
-
-            <div className='mt-4 p-2 bg-amber-50 text-amber-800 text-sm rounded'>
-              <p className='text-xs'>
-                For better printing capabilities, install:
-              </p>
-              <pre className='mt-1 text-xs bg-gray-100 p-1 rounded'>
-                npm install react-to-print
-              </pre>
-            </div>
           </div>
 
-          <div className='col-span-2'>
-            <div className='bg-gray-100 border rounded-lg p-2 h-[400px] overflow-auto'>
+          <div className="col-span-2">
+            <div className="bg-gray-100 border rounded-lg p-2 h-[400px] overflow-auto">
               <div
-                className='bg-white border rounded shadow-sm mx-auto'
+                className="bg-white border rounded shadow-sm mx-auto"
                 style={{ maxWidth: '90%' }}
               >
                 <div
-                  className='preview-content p-4 text-xs overflow-hidden'
+                  className="preview-content p-4 text-xs overflow-hidden"
                   style={{
                     transform: `scale(${printSettings.scale / 100})`,
                     transformOrigin: 'top left',
@@ -356,13 +347,33 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
                         : '8.5in',
                   }}
                 >
+                  {/* Preview header */}
+                  {printSettings.includeHeaders && (
+                    <div className="print-header border-b pb-4 mb-4">
+                      <h1 className="text-xl font-bold">{documentTitle}</h1>
+                      <div className="text-xs text-gray-500">
+                        Printed on {new Date().toLocaleDateString()}
+                      </div>
+                    </div>
+                  )}
+                
+                  {/* Content preview */}
                   {contentRef.current && (
-                    <div
-                      dangerouslySetInnerHTML={{
-                        __html: contentRef.current.innerHTML,
-                      }}
-                      className='preview-content-inner'
-                    />
+                    <div className="preview-content-inner">
+                      <div
+                        dangerouslySetInnerHTML={{
+                          __html: contentRef.current.innerHTML,
+                        }}
+                      />
+                    </div>
+                  )}
+                  
+                  {/* Preview footer */}
+                  {printSettings.includeFooters && (
+                    <div className="print-footer border-t pt-4 mt-8 text-xs text-gray-500">
+                      <p>HideSync Documentation - Page <span className="pageNumber">1</span></p>
+                      <p>© {new Date().getFullYear()} HideSync. All rights reserved.</p>
+                    </div>
                   )}
                 </div>
               </div>
@@ -370,19 +381,27 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({
           </div>
         </div>
 
-        <div className='p-4 flex justify-end space-x-3'>
+        <div className="p-4 flex justify-end space-x-3">
+          <button
+            onClick={handleDownload}
+            className="flex items-center px-4 py-2 border border-gray-300 bg-gray-50 text-gray-700 rounded hover:bg-gray-100"
+          >
+            <Download size={18} className="mr-2" />
+            Download as PDF
+          </button>
+          
           <button
             onClick={onClose}
-            className='px-4 py-2 border border-gray-300 rounded hover:bg-gray-50'
+            className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
           >
             Cancel
           </button>
 
           <button
             onClick={handlePrint}
-            className='flex items-center px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700'
+            className="flex items-center px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700"
           >
-            <Printer size={18} className='mr-2' />
+            <Printer size={18} className="mr-2" />
             Print Document
           </button>
         </div>

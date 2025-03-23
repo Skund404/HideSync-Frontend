@@ -1,13 +1,18 @@
+// src/context/SupplierContext.tsx
+import { ApiError } from '@/services/api-client';
 import {
-  filterSuppliers,
-  suppliers as mockSuppliers,
-} from '@/services/mock/suppliers';
+  getSuppliers,
+  getSupplierById as fetchSupplierById,
+  createSupplier as apiCreateSupplier,
+  updateSupplier as apiUpdateSupplier,
+  deleteSupplier as apiDeleteSupplier,
+  filterSuppliers as apiFilterSuppliers,
+} from '@/services/supplier-service';
 import { Supplier, SupplierFilters } from '@/types/supplierTypes';
 import React, {
   createContext,
   useContext,
   useEffect,
-  useMemo,
   useState,
 } from 'react';
 
@@ -18,10 +23,11 @@ interface SupplierContextType {
   filteredSuppliers: Supplier[];
   filters: SupplierFilters;
   setFilters: React.Dispatch<React.SetStateAction<SupplierFilters>>;
-  getSupplierById: (id: number) => Supplier | undefined;
-  addSupplier: (supplier: Omit<Supplier, 'id'>) => void;
-  updateSupplier: (supplier: Supplier) => void;
-  deleteSupplier: (id: number) => void;
+  getSupplierById: (id: number) => Promise<Supplier>;
+  addSupplier: (supplier: Omit<Supplier, 'id'>) => Promise<Supplier>;
+  updateSupplier: (supplier: Supplier) => Promise<Supplier>;
+  deleteSupplier: (id: number) => Promise<void>;
+  retryFetchSuppliers: () => Promise<void>;
 }
 
 const defaultFilters: SupplierFilters = {
@@ -39,67 +45,162 @@ export const SupplierProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [filteredSuppliers, setFilteredSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<SupplierFilters>(defaultFilters);
 
-  // Load mock data
-  useEffect(() => {
+  // Function to fetch suppliers
+  const fetchSuppliers = async () => {
     try {
       setLoading(true);
-      setSuppliers(mockSuppliers);
       setError(null);
+      const data = await getSuppliers();
+      setSuppliers(data);
+      setFilteredSuppliers(data); // Initialize filtered suppliers with all suppliers
     } catch (err) {
-      setError('Failed to load suppliers');
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to load suppliers');
       console.error(err);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Load suppliers from API on component mount
+  useEffect(() => {
+    fetchSuppliers();
   }, []);
 
+  // Function to retry fetching suppliers
+  const retryFetchSuppliers = async () => {
+    await fetchSuppliers();
+  };
+
   // Filter suppliers based on current filters
-  const filteredSuppliers = useMemo(() => {
-    return filterSuppliers({
-      category: filters.category,
-      status: filters.status,
-      rating: filters.rating,
-      searchQuery: filters.searchQuery,
-    });
+  useEffect(() => {
+    const applyFilters = async () => {
+      if (!filters.category && !filters.status && !filters.rating && !filters.searchQuery) {
+        // If no filters are applied, just show all suppliers
+        setFilteredSuppliers(suppliers);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        const data = await apiFilterSuppliers(filters);
+        setFilteredSuppliers(data);
+      } catch (err) {
+        console.error('Error filtering suppliers:', err);
+        // Fallback to local filtering if API fails
+        const filtered = suppliers.filter((supplier) => {
+          // Filter by category
+          if (filters.category && supplier.category !== filters.category) {
+            return false;
+          }
+
+          // Filter by status
+          if (filters.status && supplier.status !== filters.status) {
+            return false;
+          }
+
+          // Filter by rating
+          if (
+            filters.rating &&
+            supplier.rating < parseInt(String(filters.rating))
+          ) {
+            return false;
+          }
+
+          // Filter by search query
+          if (filters.searchQuery) {
+            const query = filters.searchQuery.toLowerCase();
+            if (
+              !supplier.name.toLowerCase().includes(query) &&
+              !supplier.contactName.toLowerCase().includes(query) &&
+              !supplier.materialCategories.some((category) =>
+                category.toLowerCase().includes(query)
+              )
+            ) {
+              return false;
+            }
+          }
+
+          return true;
+        });
+        setFilteredSuppliers(filtered);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    applyFilters();
   }, [suppliers, filters]);
 
   // Get supplier by ID
-  const getSupplierById = (id: number): Supplier | undefined => {
-    return suppliers.find((supplier) => supplier.id === id);
+  const getSupplierById = async (id: number): Promise<Supplier> => {
+    try {
+      return await fetchSupplierById(id);
+    } catch (err) {
+      const apiError = err as ApiError;
+      throw new Error(apiError.message || `Failed to fetch supplier ${id}`);
+    }
   };
 
   // Add new supplier
-  const addSupplier = (supplier: Omit<Supplier, 'id'>): void => {
-    const newId = Math.max(...suppliers.map((s) => s.id), 0) + 1;
-    const newSupplier: Supplier = {
-      ...supplier,
-      id: newId,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    setSuppliers((prevSuppliers) => [...prevSuppliers, newSupplier]);
+  const addSupplier = async (supplier: Omit<Supplier, 'id'>): Promise<Supplier> => {
+    try {
+      setLoading(true);
+      const newSupplier = await apiCreateSupplier(supplier);
+      setSuppliers((prevSuppliers) => [...prevSuppliers, newSupplier]);
+      return newSupplier;
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to add supplier');
+      console.error(err);
+      throw err; // Re-throw to allow component to handle the error
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Update existing supplier
-  const updateSupplier = (updatedSupplier: Supplier): void => {
-    setSuppliers((prevSuppliers) =>
-      prevSuppliers.map((supplier) =>
-        supplier.id === updatedSupplier.id
-          ? { ...updatedSupplier, updatedAt: new Date().toISOString() }
-          : supplier
-      )
-    );
+  const updateSupplier = async (updatedSupplier: Supplier): Promise<Supplier> => {
+    try {
+      setLoading(true);
+      const supplier = await apiUpdateSupplier(updatedSupplier);
+      setSuppliers((prevSuppliers) =>
+        prevSuppliers.map((s) =>
+          s.id === supplier.id ? supplier : s
+        )
+      );
+      return supplier;
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to update supplier');
+      console.error(err);
+      throw err; // Re-throw to allow component to handle the error
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Delete supplier
-  const deleteSupplier = (id: number): void => {
-    setSuppliers((prevSuppliers) =>
-      prevSuppliers.filter((supplier) => supplier.id !== id)
-    );
+  const deleteSupplier = async (id: number): Promise<void> => {
+    try {
+      setLoading(true);
+      await apiDeleteSupplier(id);
+      setSuppliers((prevSuppliers) =>
+        prevSuppliers.filter((supplier) => supplier.id !== id)
+      );
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to delete supplier');
+      console.error(err);
+      throw err; // Re-throw to allow component to handle the error
+    } finally {
+      setLoading(false);
+    }
   };
 
   const value = {
@@ -113,6 +214,7 @@ export const SupplierProvider: React.FC<{ children: React.ReactNode }> = ({
     addSupplier,
     updateSupplier,
     deleteSupplier,
+    retryFetchSuppliers,
   };
 
   return (

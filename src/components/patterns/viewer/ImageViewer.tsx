@@ -1,124 +1,250 @@
 // src/components/patterns/viewer/ImageViewer.tsx
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Annotation } from '../../../services/annotation-service';
+import { handleApiError } from '../../../services/error-handler';
+import { getPatternFile } from '../../../services/file-upload-service';
+import { showError, showSuccess } from '../../../services/notification-service';
+import ErrorBoundary from '../../common/ErrorBoundary';
+import ErrorMessage from '../../common/ErrorMessage';
 import LoadingSpinner from '../../common/LoadingSpinner';
+import AnnotationLayer from '../annotation/AnnotationLayer';
 
 interface ImageViewerProps {
   filePath: string;
+  annotations?: Annotation[];
+  onAnnotationSelected?: (annotation: Annotation) => void;
+  onAnnotationCreated?: (
+    annotation: Omit<Annotation, 'id' | 'createdAt' | 'modifiedAt'>
+  ) => void;
+  onAnnotationUpdated?: (id: string, annotation: Partial<Annotation>) => void;
+  onAnnotationDeleted?: (id: string) => void;
+  activeAnnotationId?: string;
+  setActiveAnnotationId?: (id?: string) => void;
+  activeToolType?: 'text' | 'arrow' | 'measurement' | 'highlight' | null;
+  showAnnotations?: boolean;
+  readOnly?: boolean;
+  onError?: (error: string) => void;
 }
 
-const ImageViewer: React.FC<ImageViewerProps> = ({ filePath }) => {
-  const [loading, setLoading] = useState(false);
-  const [zoom, setZoom] = useState(1);
+const ImageViewer: React.FC<ImageViewerProps> = ({
+  filePath,
+  annotations = [],
+  onAnnotationSelected,
+  onAnnotationCreated,
+  onAnnotationUpdated,
+  onAnnotationDeleted,
+  activeAnnotationId,
+  setActiveAnnotationId,
+  activeToolType,
+  showAnnotations = true,
+  readOnly = false,
+  onError,
+}) => {
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [zoom, setZoom] = useState<number>(1);
   const [position, setPosition] = useState<{ x: number; y: number }>({
     x: 0,
     y: 0,
   });
-  const [isDragging, setIsDragging] = useState(false);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number }>({
     x: 0,
     y: 0,
   });
-  const [showGrid, setShowGrid] = useState(false);
-  const [showRuler, setShowRuler] = useState(false);
+  const [imageDimensions, setImageDimensions] = useState<{
+    width: number;
+    height: number;
+  }>({ width: 0, height: 0 });
+  const [loadingRetries, setLoadingRetries] = useState<number>(0);
 
+  const imageContainerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
 
-  // For a real implementation, we would fetch the actual image
-  // For demo purposes, we'll use a placeholder image
-  const getImageUrl = () => {
-    // For demo, we'll use different placeholders based on the pattern type
-    if (filePath.includes('knife_sheath')) {
-      return '/api/placeholder/800/600';
+  useEffect(() => {
+    const fetchImage = async () => {
+      if (!filePath) {
+        setError('No file path provided');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        const imageBlob = await getPatternFile<Blob>(filePath, 'blob');
+
+        // Verify that it's an image file
+        if (!imageBlob.type.startsWith('image/')) {
+          throw new Error('Invalid image file type');
+        }
+
+        // Create an object URL from the blob
+        const url = URL.createObjectURL(imageBlob);
+        setImageUrl(url);
+        setError(null);
+      } catch (err) {
+        const errorMessage = handleApiError(err, 'Failed to load image file');
+        setError(errorMessage);
+
+        if (onError) {
+          onError(errorMessage);
+        } else {
+          showError(`Error loading image: ${errorMessage}`);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchImage();
+
+    // Clean up the URL when the component unmounts
+    return () => {
+      if (imageUrl) {
+        URL.revokeObjectURL(imageUrl);
+      }
+    };
+  }, [filePath, onError, loadingRetries, imageUrl]);
+
+  // Get image dimensions once it's loaded
+  const handleImageLoad = () => {
+    if (imageRef.current) {
+      setImageDimensions({
+        width: imageRef.current.naturalWidth,
+        height: imageRef.current.naturalHeight,
+      });
     }
-    return '/api/placeholder/600/400';
   };
 
-  // Handle mouse down for dragging
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return; // Only left mouse button
-
-    setIsDragging(true);
-    setDragStart({ x: e.clientX, y: e.clientY });
-
-    // Prevent text selection during drag
-    e.preventDefault();
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button === 0) {
+      // Left mouse button
+      setIsDragging(true);
+      setDragStart({ x: e.clientX, y: e.clientY });
+    }
   };
 
-  // Handle mouse move for dragging
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isDragging) return;
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging) {
+      const deltaX = e.clientX - dragStart.x;
+      const deltaY = e.clientY - dragStart.y;
 
-    const dx = e.clientX - dragStart.x;
-    const dy = e.clientY - dragStart.y;
+      setPosition({
+        x: position.x + deltaX,
+        y: position.y + deltaY,
+      });
 
-    setPosition({
-      x: position.x + dx,
-      y: position.y + dy,
-    });
-
-    setDragStart({ x: e.clientX, y: e.clientY });
+      setDragStart({ x: e.clientX, y: e.clientY });
+    }
   };
 
-  // Handle mouse up to end dragging
   const handleMouseUp = () => {
     setIsDragging(false);
   };
 
-  // Handle mouse wheel for zooming
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+  const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
 
-    const delta = e.deltaY < 0 ? 0.1 : -0.1;
-    const newZoom = Math.max(0.5, Math.min(3, zoom + delta));
+    // Calculate zoom factor
+    const zoomFactor = 0.1;
+    const delta = e.deltaY < 0 ? zoomFactor : -zoomFactor;
+    const newZoom = Math.max(0.1, Math.min(5, zoom + delta));
 
     setZoom(newZoom);
   };
 
-  // Reset zoom and position
-  const handleReset = () => {
+  const resetView = () => {
     setZoom(1);
     setPosition({ x: 0, y: 0 });
   };
 
-  // Toggle grid overlay
-  const handleToggleGrid = () => {
-    setShowGrid(!showGrid);
+  const handleDownload = async () => {
+    if (!imageUrl) return;
+
+    try {
+      // Create a download link
+      const a = document.createElement('a');
+      a.href = imageUrl;
+      a.download = filePath.split('/').pop() || 'pattern.jpg';
+
+      // Trigger download
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      showSuccess('Image downloaded successfully');
+    } catch (err) {
+      const errorMessage = handleApiError(err, 'Failed to download image file');
+      showError(`Error downloading image: ${errorMessage}`);
+    }
   };
 
-  // Toggle ruler overlay
-  const handleToggleRuler = () => {
-    setShowRuler(!showRuler);
+  const handleRetry = () => {
+    setLoadingRetries((prev) => prev + 1);
   };
 
-  // Handle brightness adjustment
-  const handleBrightnessAdjust = () => {
-    // In a real app, this would adjust image brightness
-    console.log('Brightness adjustment would be implemented here');
-  };
-
-  // Handle contrast adjustment
-  const handleContrastAdjust = () => {
-    // In a real app, this would adjust image contrast
-    console.log('Contrast adjustment would be implemented here');
+  // Custom handler for setActiveAnnotationId to match the expected function signature
+  const handleSetActiveAnnotationId = (id?: string) => {
+    if (setActiveAnnotationId) {
+      setActiveAnnotationId(id);
+    }
   };
 
   if (loading) {
-    return <LoadingSpinner message='Loading image...' />;
+    return (
+      <LoadingSpinner size='medium' color='amber' message='Loading image...' />
+    );
+  }
+
+  if (error) {
+    return <ErrorMessage message={error} onRetry={handleRetry} />;
+  }
+
+  if (!imageUrl) {
+    return (
+      <div className='flex items-center justify-center h-96 bg-stone-100 rounded-lg'>
+        <div className='text-center p-6'>
+          <svg
+            xmlns='http://www.w3.org/2000/svg'
+            className='h-12 w-12 text-stone-400 mx-auto mb-4'
+            fill='none'
+            viewBox='0 0 24 24'
+            stroke='currentColor'
+          >
+            <path
+              strokeLinecap='round'
+              strokeLinejoin='round'
+              strokeWidth={2}
+              d='M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+            />
+          </svg>
+          <h3 className='text-lg font-medium text-stone-700'>
+            No Image Content
+          </h3>
+          <p className='text-stone-500 mt-2'>
+            The image file could not be loaded.
+          </p>
+          <button
+            onClick={handleRetry}
+            className='mt-4 px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 transition-colors'
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className='bg-white rounded-lg border border-stone-200 overflow-hidden'>
-      {/* Toolbar */}
-      <div className='flex flex-wrap items-center justify-between bg-stone-50 border-b border-stone-200 p-2'>
-        <div className='flex items-center space-x-2 mb-2 sm:mb-0'>
-          <div className='text-sm text-stone-600'>
-            Zoom: {(zoom * 100).toFixed(0)}%
-          </div>
-
+    <div className='flex flex-col h-full'>
+      {/* Controls */}
+      <div className='flex justify-between items-center p-2 bg-stone-100 rounded-t-lg'>
+        <div className='flex items-center space-x-2'>
           <button
-            className='p-1 text-stone-500 hover:text-stone-700 hover:bg-stone-100 rounded'
-            onClick={() => setZoom(Math.max(0.5, zoom - 0.1))}
-            aria-label='Zoom out'
+            onClick={() => setZoom((zoom) => Math.min(5, zoom + 0.1))}
+            className='p-2 text-stone-600 hover:text-stone-900 hover:bg-stone-200 rounded-md transition-colors'
+            title='Zoom In'
           >
             <svg
               xmlns='http://www.w3.org/2000/svg'
@@ -131,15 +257,14 @@ const ImageViewer: React.FC<ImageViewerProps> = ({ filePath }) => {
                 strokeLinecap='round'
                 strokeLinejoin='round'
                 strokeWidth={2}
-                d='M20 12H4'
+                d='M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7'
               />
             </svg>
           </button>
-
           <button
-            className='p-1 text-stone-500 hover:text-stone-700 hover:bg-stone-100 rounded'
-            onClick={() => setZoom(Math.min(3, zoom + 0.1))}
-            aria-label='Zoom in'
+            onClick={() => setZoom((zoom) => Math.max(0.1, zoom - 0.1))}
+            className='p-2 text-stone-600 hover:text-stone-900 hover:bg-stone-200 rounded-md transition-colors'
+            title='Zoom Out'
           >
             <svg
               xmlns='http://www.w3.org/2000/svg'
@@ -152,15 +277,14 @@ const ImageViewer: React.FC<ImageViewerProps> = ({ filePath }) => {
                 strokeLinecap='round'
                 strokeLinejoin='round'
                 strokeWidth={2}
-                d='M12 4v16m8-8H4'
+                d='M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7'
               />
             </svg>
           </button>
-
           <button
-            className='p-1 text-stone-500 hover:text-stone-700 hover:bg-stone-100 rounded'
-            onClick={handleReset}
-            aria-label='Reset view'
+            onClick={resetView}
+            className='p-2 text-stone-600 hover:text-stone-900 hover:bg-stone-200 rounded-md transition-colors'
+            title='Reset View'
           >
             <svg
               xmlns='http://www.w3.org/2000/svg'
@@ -177,209 +301,94 @@ const ImageViewer: React.FC<ImageViewerProps> = ({ filePath }) => {
               />
             </svg>
           </button>
+          <span className='text-sm text-stone-600'>
+            Zoom: {Math.round(zoom * 100)}%
+          </span>
         </div>
-
-        <div className='flex items-center space-x-2'>
-          <button
-            className={`p-1 rounded ${
-              showGrid
-                ? 'bg-amber-100 text-amber-700'
-                : 'text-stone-500 hover:text-stone-700 hover:bg-stone-100'
-            }`}
-            onClick={handleToggleGrid}
-            aria-label='Toggle grid'
-            title='Toggle grid overlay'
+        <button
+          onClick={handleDownload}
+          className='p-2 text-stone-600 hover:text-stone-900 hover:bg-stone-200 rounded-md transition-colors'
+          title='Download Image'
+        >
+          <svg
+            xmlns='http://www.w3.org/2000/svg'
+            className='h-5 w-5'
+            fill='none'
+            viewBox='0 0 24 24'
+            stroke='currentColor'
           >
-            <svg
-              xmlns='http://www.w3.org/2000/svg'
-              className='h-5 w-5'
-              fill='none'
-              viewBox='0 0 24 24'
-              stroke='currentColor'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={2}
-                d='M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z'
-              />
-            </svg>
-          </button>
-
-          <button
-            className={`p-1 rounded ${
-              showRuler
-                ? 'bg-amber-100 text-amber-700'
-                : 'text-stone-500 hover:text-stone-700 hover:bg-stone-100'
-            }`}
-            onClick={handleToggleRuler}
-            aria-label='Toggle ruler'
-            title='Toggle ruler overlay'
-          >
-            <svg
-              xmlns='http://www.w3.org/2000/svg'
-              className='h-5 w-5'
-              fill='none'
-              viewBox='0 0 24 24'
-              stroke='currentColor'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={2}
-                d='M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10'
-              />
-            </svg>
-          </button>
-
-          <button
-            className='p-1 text-stone-500 hover:text-stone-700 hover:bg-stone-100 rounded'
-            onClick={handleBrightnessAdjust}
-            aria-label='Adjust brightness'
-            title='Adjust brightness'
-          >
-            <svg
-              xmlns='http://www.w3.org/2000/svg'
-              className='h-5 w-5'
-              fill='none'
-              viewBox='0 0 24 24'
-              stroke='currentColor'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={2}
-                d='M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z'
-              />
-            </svg>
-          </button>
-
-          <button
-            className='p-1 text-stone-500 hover:text-stone-700 hover:bg-stone-100 rounded'
-            onClick={handleContrastAdjust}
-            aria-label='Adjust contrast'
-            title='Adjust contrast'
-          >
-            <svg
-              xmlns='http://www.w3.org/2000/svg'
-              className='h-5 w-5'
-              fill='none'
-              viewBox='0 0 24 24'
-              stroke='currentColor'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={2}
-                d='M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z'
-              />
-            </svg>
-          </button>
-        </div>
+            <path
+              strokeLinecap='round'
+              strokeLinejoin='round'
+              strokeWidth={2}
+              d='M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4'
+            />
+          </svg>
+        </button>
       </div>
 
-      {/* Image Viewer */}
-      <div
-        className='h-96 bg-stone-800 relative overflow-hidden'
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
-        style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
-      >
-        {/* Grid Overlay */}
-        {showGrid && (
-          <div className='absolute inset-0 pointer-events-none z-10'>
-            <div
-              className='w-full h-full'
-              style={{
-                backgroundImage:
-                  'linear-gradient(to right, rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.1) 1px, transparent 1px)',
-                backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
-                transform: `translate(${position.x % (20 * zoom)}px, ${
-                  position.y % (20 * zoom)
-                }px)`,
-              }}
-            ></div>
-          </div>
-        )}
-
-        {/* Rulers Overlay */}
-        {showRuler && (
-          <>
-            {/* Horizontal Ruler */}
-            <div className='absolute top-0 left-0 right-0 h-6 bg-stone-700 border-b border-stone-600 flex items-center z-10'>
-              {[...Array(30)].map((_, i) => (
-                <div
-                  key={`h-${i}`}
-                  className='relative'
-                  style={{ left: `${i * 50 * zoom + position.x}px` }}
-                >
-                  <div className='absolute h-3 border-l border-stone-400'></div>
-                  <div
-                    className='absolute top-3 text-stone-400 text-xs'
-                    style={{ transform: 'translateX(-50%)' }}
-                  >
-                    {i * 5}cm
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Vertical Ruler */}
-            <div className='absolute top-6 left-0 bottom-0 w-6 bg-stone-700 border-r border-stone-600 flex flex-col items-center z-10'>
-              {[...Array(20)].map((_, i) => (
-                <div
-                  key={`v-${i}`}
-                  className='relative'
-                  style={{ top: `${i * 50 * zoom + position.y}px` }}
-                >
-                  <div className='absolute w-3 border-t border-stone-400'></div>
-                  <div
-                    className='absolute left-3 text-stone-400 text-xs'
-                    style={{ transform: 'translateY(-50%)' }}
-                  >
-                    {i * 5}cm
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {/* Image */}
+      {/* Image Viewer with Annotations */}
+      <ErrorBoundary>
         <div
-          className='h-full w-full flex items-center justify-center'
-          style={{
-            transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
-            transformOrigin: 'center',
-            transition: isDragging ? 'none' : 'transform 0.1s ease-out',
-            paddingTop: showRuler ? '24px' : '0',
-            paddingLeft: showRuler ? '24px' : '0',
+          ref={imageContainerRef}
+          className='flex-1 overflow-hidden bg-stone-200 border border-stone-200 rounded-b-lg flex justify-center items-center relative'
+          onMouseDown={(e) => {
+            // Only initiate drag if not clicking on an annotation
+            if (
+              e.target === imageRef.current ||
+              e.target === imageContainerRef.current
+            ) {
+              handleMouseDown(e);
+            }
           }}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onWheel={handleWheel}
+          style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
         >
           <img
             ref={imageRef}
-            src={getImageUrl()}
+            src={imageUrl}
             alt='Pattern'
-            className='max-h-full max-w-full'
-            onLoad={() => setLoading(false)}
+            className='max-w-full max-h-full'
+            style={{
+              transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
+              transformOrigin: 'center center',
+              transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+            }}
+            onLoad={handleImageLoad}
+            onDragStart={(e) => e.preventDefault()} // Prevent browser's default drag behavior
+            onError={() => {
+              setError('Failed to load image content');
+              if (onError) {
+                onError('Failed to load image content');
+              }
+            }}
           />
-        </div>
-      </div>
 
-      {/* Bottom Tools */}
-      <div className='bg-stone-50 border-t border-stone-200 p-2 text-sm text-stone-500'>
-        <div className='flex items-center justify-between'>
-          <div>Pan: Click and drag • Zoom: Mouse wheel or buttons</div>
-          <div>
-            <button className='px-2 py-1 text-amber-600 hover:text-amber-800 font-medium'>
-              Download Image
-            </button>
-          </div>
+          {/* Annotation Layer */}
+          {showAnnotations && imageContainerRef.current ? (
+            <AnnotationLayer
+              annotations={annotations || []}
+              onAddAnnotation={onAnnotationCreated}
+              onUpdateAnnotation={onAnnotationUpdated}
+              onDeleteAnnotation={onAnnotationDeleted}
+              activeAnnotationId={activeAnnotationId}
+              setActiveAnnotationId={handleSetActiveAnnotationId}
+              activeToolType={activeToolType}
+              zoom={zoom}
+              position={position}
+              containerRef={
+                imageContainerRef as React.RefObject<HTMLDivElement>
+              }
+              readOnly={readOnly}
+              svgWidth={imageDimensions.width}
+              svgHeight={imageDimensions.height}
+            />
+          ) : null}
         </div>
-      </div>
+      </ErrorBoundary>
     </div>
   );
 };

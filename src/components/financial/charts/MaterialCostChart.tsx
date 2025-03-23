@@ -1,3 +1,4 @@
+// src/components/financial/charts/MaterialCostChart.tsx
 import React from 'react';
 import {
   Bar,
@@ -11,25 +12,42 @@ import {
 } from 'recharts';
 import { useFinancial } from '../../../context/FinancialContext';
 import { formatCurrency } from '../../../utils/financialHelpers';
+import LoadingSpinner from '../../common/LoadingSpinner';
+import ErrorMessage from '../../common/ErrorMessage';
 
 const MaterialCostChart: React.FC = () => {
-  const { materialCosts, loading } = useFinancial();
+  const { materialCosts, loading, loadingState, error, refreshData } = useFinancial();
 
-  if (loading) {
+  // Specific loading state for this component
+  if (loading || loadingState.materialCosts) {
     return (
       <div className='flex items-center justify-center h-full'>
-        <div className='text-center'>
-          <div className='inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-600'></div>
-          <p className='mt-2 text-sm text-stone-500'>Loading chart data...</p>
-        </div>
+        <LoadingSpinner
+          size="medium"
+          color="amber"
+          message="Loading material cost data..."
+        />
       </div>
     );
   }
 
+  // Handle error state with retry option
+  if (error) {
+    return (
+      <div className='flex items-center justify-center h-full'>
+        <ErrorMessage 
+          message="Unable to load material cost data. Please try again." 
+          onRetry={refreshData} 
+        />
+      </div>
+    );
+  }
+
+  // Handle empty data state
   if (!materialCosts.length) {
     return (
       <div className='flex items-center justify-center h-full'>
-        <p className='text-stone-500'>No material cost data available</p>
+        <p className='text-stone-500'>No material cost data available for the selected period</p>
       </div>
     );
   }

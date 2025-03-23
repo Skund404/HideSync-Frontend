@@ -1,3 +1,4 @@
+// src/components/sales/OrderList.tsx
 import React, { useEffect, useState } from 'react';
 import { useSales } from '../../context/SalesContext';
 import { FulfillmentStatus, Sale, SalesFilters } from '../../types/salesTypes';
@@ -45,7 +46,7 @@ const OrderList: React.FC<OrderListProps> = ({
     }
 
     onFilterChange(updatedFilters);
-  }, [tab]);
+  }, [tab, onFilterChange, filters]);
 
   // Update filtered sales when filters change
   useEffect(() => {
@@ -53,7 +54,7 @@ const OrderList: React.FC<OrderListProps> = ({
     const includeCompleted = tab === 'all' || tab === 'shipped';
     const filtered = filterSalesList(filters, includeCompleted);
     setFilteredSales(filtered);
-  }, [filters, sales, tab]);
+  }, [filters, sales, tab, filterSalesList]);
 
   const getStatusBadgeClasses = (status: string): string => {
     switch (status) {
@@ -186,7 +187,7 @@ const OrderList: React.FC<OrderListProps> = ({
                     {sale.channel}
                   </td>
                   <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium'>
-                    ${sale.total.toFixed(2)}
+                    ${sale.totalAmount.toFixed(2)}
                   </td>
                   <td className='px-6 py-4 whitespace-nowrap text-sm font-medium'>
                     <button

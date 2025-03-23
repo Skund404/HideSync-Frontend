@@ -1,3 +1,4 @@
+// src/components/financial/export/DataExportModal.tsx
 import {
   Calendar,
   Check,
@@ -10,6 +11,8 @@ import {
 import React, { useState } from 'react';
 import { useFinancial } from '../../../context/FinancialContext';
 import { TimeFrame } from '../../../types/financialTypes';
+import ErrorMessage from '../../common/ErrorMessage';
+import LoadingSpinner from '../../common/LoadingSpinner';
 
 interface DataExportModalProps {
   onClose: () => void;
@@ -18,7 +21,7 @@ interface DataExportModalProps {
 type ExportFormat = 'csv' | 'excel' | 'pdf';
 
 const DataExportModal: React.FC<DataExportModalProps> = ({ onClose }) => {
-  const { filters, exportData } = useFinancial();
+  const { filters, exportData, error } = useFinancial();
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('excel');
   const [timeframe, setTimeframe] = useState<TimeFrame>(filters.timeFrame);
   const [includeOptions, setIncludeOptions] = useState({
@@ -32,6 +35,7 @@ const DataExportModal: React.FC<DataExportModalProps> = ({ onClose }) => {
   });
   const [isExporting, setIsExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [showOptions, setShowOptions] = useState(false);
 
   const handleIncludeToggle = (option: keyof typeof includeOptions) => {
@@ -43,19 +47,40 @@ const DataExportModal: React.FC<DataExportModalProps> = ({ onClose }) => {
 
   const handleExport = async () => {
     setIsExporting(true);
+    setExportError(null);
 
     try {
-      // Call the export function from the context
-      await exportData(selectedFormat);
-      setExportSuccess(true);
+      // Prepare options for export - use the correct structure for includeSections
+      const options = {
+        timeframe,
+        includeSections: includeOptions, // This is already the correct structure
+        includeCharts: true,
+        includeRawData: false,
+        filename: `hidesync_financial_export_${new Date()
+          .toISOString()
+          .slice(0, 10)}`,
+      };
 
-      // Close the modal after a delay
-      setTimeout(() => {
-        onClose();
-      }, 2000);
+      // Call the export function from the context
+      const success = await exportData(selectedFormat, options);
+
+      if (success) {
+        setExportSuccess(true);
+
+        // Close the modal after a delay
+        setTimeout(() => {
+          onClose();
+        }, 2000);
+      } else {
+        setExportError('Export failed. Please try again.');
+      }
     } catch (error) {
       console.error('Export failed:', error);
-      // Handle error
+      setExportError(
+        error instanceof Error
+          ? error.message
+          : 'Export failed. Please try again.'
+      );
     } finally {
       setIsExporting(false);
     }
@@ -89,6 +114,18 @@ const DataExportModal: React.FC<DataExportModalProps> = ({ onClose }) => {
         </div>
 
         <div className='p-4'>
+          {/* Display any error that occurred */}
+          {(error || exportError) && (
+            <div className='mb-4'>
+              <ErrorMessage
+                message={
+                  exportError ||
+                  'There was a problem preparing the export. Some data may be unavailable.'
+                }
+              />
+            </div>
+          )}
+
           <div className='space-y-6'>
             {/* Export Format Selection */}
             <div>
@@ -255,17 +292,23 @@ const DataExportModal: React.FC<DataExportModalProps> = ({ onClose }) => {
 
           <button
             onClick={handleExport}
-            disabled={isExporting || exportSuccess}
+            disabled={
+              isExporting ||
+              exportSuccess ||
+              Object.entries(includeOptions).filter(
+                ([_, isIncluded]) => isIncluded
+              ).length === 0
+            }
             className={`px-4 py-2 rounded-md flex items-center ${
               exportSuccess
                 ? 'bg-green-600 text-white'
-                : 'bg-amber-600 text-white hover:bg-amber-700'
+                : 'bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed'
             }`}
           >
             {isExporting ? (
               <>
-                <div className='animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2'></div>
-                Exporting...
+                <LoadingSpinner size='small' color='amber' />
+                <span className='ml-2'>Exporting...</span>
               </>
             ) : exportSuccess ? (
               <>

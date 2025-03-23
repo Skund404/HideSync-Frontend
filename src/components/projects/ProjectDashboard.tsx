@@ -4,7 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { useProjects } from '../../context/ProjectContext';
 import { useProjectTemplates } from '../../context/ProjectTemplateContext';
 import { useRecurringProjects } from '../../context/RecurringProjectContext';
-import { ProjectStatus } from '../../types/enums';
+import { ProjectStatus } from '../../types/projectTimeline';
+import { matchProjectStatus } from '../../utils/projectTypeUtils';
+import LoadingSpinner from '../common/LoadingSpinner';
 
 const ProjectDashboard: React.FC = () => {
   const { projects, loading: projectsLoading } = useProjects();
@@ -13,10 +15,11 @@ const ProjectDashboard: React.FC = () => {
     useRecurringProjects();
   const navigate = useNavigate();
 
+  // Use our matchProjectStatus utility to safely filter projects
   const activeProjects = projects.filter(
     (p) =>
-      p.status !== ProjectStatus.COMPLETED &&
-      p.status !== ProjectStatus.CANCELLED
+      !matchProjectStatus(p.status, ProjectStatus.COMPLETED) &&
+      !matchProjectStatus(p.status, ProjectStatus.CANCELLED)
   );
 
   // Fix for date sorting - handle undefined dates safely
@@ -37,7 +40,11 @@ const ProjectDashboard: React.FC = () => {
   if (loading) {
     return (
       <div className='p-8 flex justify-center'>
-        <div className='animate-spin rounded-full h-12 w-12 border-b-2 border-amber-600'></div>
+        <LoadingSpinner
+          size='medium'
+          color='amber'
+          message='Loading dashboard...'
+        />
       </div>
     );
   }
@@ -128,14 +135,20 @@ const ProjectDashboard: React.FC = () => {
                       <span
                         className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
                         ${
-                          project.status === ProjectStatus.IN_PROGRESS
+                          matchProjectStatus(
+                            project.status,
+                            ProjectStatus.IN_PROGRESS
+                          )
                             ? 'bg-green-100 text-green-800'
-                            : project.status === ProjectStatus.PLANNING
+                            : matchProjectStatus(
+                                project.status,
+                                ProjectStatus.PLANNING
+                              )
                             ? 'bg-blue-100 text-blue-800'
                             : 'bg-amber-100 text-amber-800'
                         }`}
                       >
-                        {project.status}
+                        {project.status.toString().replace(/_/g, ' ')}
                       </span>
                     </td>
                     <td className='px-6 py-4 whitespace-nowrap'>
@@ -144,13 +157,15 @@ const ProjectDashboard: React.FC = () => {
                           className='bg-amber-600 h-2.5 rounded-full'
                           style={{
                             width: `${
-                              (project as any).completionPercentage ?? 0
+                              project.completionPercentage ??
+                              project.progress ??
+                              0
                             }%`,
                           }}
                         ></div>
                       </div>
                       <span className='text-xs text-stone-500 mt-1'>
-                        {(project as any).completionPercentage ?? 0}%
+                        {project.completionPercentage ?? project.progress ?? 0}%
                       </span>
                     </td>
                   </tr>
@@ -169,25 +184,25 @@ const ProjectDashboard: React.FC = () => {
         <div className='flex flex-wrap gap-4'>
           <button
             onClick={() => navigate('/projects/new')}
-            className='px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700'
+            className='px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 transition-colors'
           >
             New Project
           </button>
           <button
             onClick={() => navigate('/projects/templates/new')}
-            className='px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700'
+            className='px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors'
           >
             Create Template
           </button>
           <button
             onClick={() => navigate('/projects/recurring/new')}
-            className='px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700'
+            className='px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors'
           >
             Setup Recurring Project
           </button>
           <button
             onClick={() => navigate('/projects/picking-lists')}
-            className='px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700'
+            className='px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors'
           >
             Picking Lists
           </button>

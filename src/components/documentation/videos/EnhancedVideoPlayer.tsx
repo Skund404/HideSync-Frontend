@@ -14,7 +14,11 @@ import {
   VolumeX,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { VideoResource } from '../../../types/documentationTypes';
+import {
+  VideoNote,
+  VideoResource,
+  VideoTimestamp,
+} from '../../../types/documentationTypes';
 
 // Extend Window interface to include YouTube IFrame API properties
 declare global {
@@ -22,19 +26,6 @@ declare global {
     YT: any;
     onYouTubeIframeAPIReady: () => void;
   }
-}
-
-export interface VideoTimestamp {
-  time: number; // In seconds
-  label: string;
-  description?: string;
-}
-
-interface VideoNote {
-  id: string;
-  timeInSeconds: number;
-  text: string;
-  createdAt: string;
 }
 
 interface EnhancedVideoPlayerProps {
@@ -77,6 +68,26 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
   const playerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLIFrameElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Get video ID from URL if not directly provided
+  const getVideoId = () => {
+    if (video.videoId) return video.videoId;
+
+    // Extract ID from YouTube URL if provided
+    if (video.url && video.url.includes('youtube.com')) {
+      const urlParams = new URLSearchParams(new URL(video.url).search);
+      return urlParams.get('v') || '';
+    }
+
+    // Extract ID from YouTube shortened URL
+    if (video.url && video.url.includes('youtu.be')) {
+      return video.url.split('/').pop() || '';
+    }
+
+    return '';
+  };
+
+  const videoId = getVideoId();
 
   // YouTube IFrame API player instance
   const [player, setPlayer] = useState<any>(null);
@@ -142,31 +153,28 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
         player.destroy();
       }
     };
-  }, [video.videoId, initPlayer, player]);
+  }, [videoId, initPlayer, player]);
 
   // Load saved notes
   useEffect(() => {
     try {
-      const savedNotes = localStorage.getItem(`video_notes_${video.videoId}`);
+      const savedNotes = localStorage.getItem(`video_notes_${videoId}`);
       if (savedNotes) {
         setNotes(JSON.parse(savedNotes));
       }
     } catch (error) {
       console.error('Error loading video notes:', error);
     }
-  }, [video.videoId]);
+  }, [videoId]);
 
   // Save notes when they change
   useEffect(() => {
     try {
-      localStorage.setItem(
-        `video_notes_${video.videoId}`,
-        JSON.stringify(notes)
-      );
+      localStorage.setItem(`video_notes_${videoId}`, JSON.stringify(notes));
     } catch (error) {
       console.error('Error saving video notes:', error);
     }
-  }, [notes, video.videoId]);
+  }, [notes, videoId]);
 
   // Update current time
   useEffect(() => {
@@ -211,7 +219,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
   }, [isPlaying, currentTime]);
 
   // Calculate video URL with options
-  const baseVideoUrl = `https://www.youtube.com/embed/${video.videoId}?enablejsapi=1&rel=0&modestbranding=1&playsinline=1`;
+  const baseVideoUrl = `https://www.youtube.com/embed/${videoId}?enablejsapi=1&rel=0&modestbranding=1&playsinline=1`;
 
   // Player control functions
   const togglePlay = () => {
@@ -337,7 +345,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
   };
 
   // Build external YouTube URL
-  const youtubeUrl = `https://www.youtube.com/watch?v=${video.videoId}${
+  const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}${
     video.startTime ? `&t=${video.startTime}` : ''
   }`;
 
@@ -356,6 +364,20 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     }
   };
 
+  // If no valid video ID, show placeholder
+  if (!videoId) {
+    return (
+      <div
+        className={`bg-stone-100 flex items-center justify-center ${className}`}
+      >
+        <div className='text-stone-500 text-center p-4'>
+          <p>Video unavailable</p>
+          <p className='text-sm'>{video.title || 'No video ID found'}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={playerRef}
@@ -366,7 +388,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
       <div className='aspect-video bg-black'>
         <iframe
           ref={videoRef}
-          id={`player-${video.videoId}`}
+          id={`player-${videoId}`}
           src={baseVideoUrl}
           width={width}
           height={height}

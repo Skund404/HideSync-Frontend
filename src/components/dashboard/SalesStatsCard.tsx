@@ -29,9 +29,11 @@ const SalesStatsCard: React.FC = () => {
     return (
       <StatCard
         title='Sales'
-        value='--'
+        value={0} // Using 0 instead of string '--' to match the expected number type
         color='amber'
-        icon={salesIcon} // Add the icon to the loading state
+        icon={salesIcon}
+        detail='Loading...'
+        percentage={0}
       />
     );
 

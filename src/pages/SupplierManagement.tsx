@@ -1,6 +1,10 @@
 // src/pages/SupplierManagement.tsx
+import ErrorMessage from '@/components/common/ErrorMessage';
+import LoadingSpinner from '@/components/common/LoadingSpinner';
+import CreatePurchaseOrderModal from '@/components/purchases/CreatePurchaseOrderModal';
 import SupplierDetailsModal from '@/components/suppliers/SupplierDetailsModal';
 import SupplierFilterBar from '@/components/suppliers/SupplierFilterBar';
+import SupplierForm from '@/components/suppliers/SupplierForm';
 import SupplierGridView from '@/components/suppliers/SupplierGridView';
 import SupplierListView from '@/components/suppliers/SupplierListView';
 import { useSuppliers } from '@/context/SupplierContext';
@@ -14,8 +18,17 @@ const SupplierManagement: React.FC = () => {
   );
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showCreatePurchase, setShowCreatePurchase] = useState(false);
+  const [showAddSupplierForm, setShowAddSupplierForm] = useState(false);
+  const [supplierToEdit, setSupplierToEdit] = useState<Supplier | null>(null);
 
-  const { filteredSuppliers, filters, setFilters } = useSuppliers();
+  const { 
+    filteredSuppliers, 
+    filters, 
+    setFilters, 
+    loading, 
+    error,
+    retryFetchSuppliers 
+  } = useSuppliers();
 
   // Handle viewing a supplier's details
   const handleViewSupplier = (supplier: Supplier) => {
@@ -31,8 +44,18 @@ const SupplierManagement: React.FC = () => {
 
   // Handle adding a new supplier
   const handleAddSupplier = () => {
-    // This would typically open a create supplier modal
-    console.log('Add new supplier');
+    setShowAddSupplierForm(true);
+  };
+  
+  // Handle editing a supplier
+  const handleEditSupplier = (supplier: Supplier) => {
+    setSupplierToEdit(supplier);
+  };
+  
+  // Handle form submission success
+  const handleFormSuccess = () => {
+    setShowAddSupplierForm(false);
+    setSupplierToEdit(null);
   };
 
   return (
@@ -45,18 +68,35 @@ const SupplierManagement: React.FC = () => {
         onAddSupplier={handleAddSupplier}
       />
 
-      {viewMode === 'grid' ? (
-        <SupplierGridView
-          suppliers={filteredSuppliers}
-          onViewSupplier={handleViewSupplier}
-          onCreatePurchase={handleCreatePurchase}
+      {error && (
+        <div className="mb-6">
+          <ErrorMessage 
+            message={error} 
+            onRetry={retryFetchSuppliers} 
+          />
+        </div>
+      )}
+
+      {loading ? (
+        <LoadingSpinner 
+          size="medium" 
+          color="amber" 
+          message="Loading suppliers..." 
         />
       ) : (
-        <SupplierListView
-          suppliers={filteredSuppliers}
-          onViewSupplier={handleViewSupplier}
-          onCreatePurchase={handleCreatePurchase}
-        />
+        viewMode === 'grid' ? (
+          <SupplierGridView
+            suppliers={filteredSuppliers}
+            onViewSupplier={handleViewSupplier}
+            onCreatePurchase={handleCreatePurchase}
+          />
+        ) : (
+          <SupplierListView
+            suppliers={filteredSuppliers}
+            onViewSupplier={handleViewSupplier}
+            onCreatePurchase={handleCreatePurchase}
+          />
+        )
       )}
 
       {selectedSupplier && showDetailsModal && (
@@ -67,35 +107,36 @@ const SupplierManagement: React.FC = () => {
             setShowDetailsModal(false);
             setShowCreatePurchase(true);
           }}
+          onEditSupplier={(supplier) => {
+            setShowDetailsModal(false);
+            setSupplierToEdit(supplier);
+          }}
         />
       )}
 
-      {/* Create Purchase Order Modal would be added here */}
+      {/* Create Purchase Order Modal */}
       {selectedSupplier && showCreatePurchase && (
-        <div className='fixed inset-0 bg-stone-900/50 flex items-center justify-center z-50 p-4'>
-          <div className='bg-white rounded-lg shadow-xl max-w-4xl w-full'>
-            <div className='p-6 border-b border-stone-200'>
-              <h2 className='text-xl font-medium'>Create Purchase Order</h2>
-              <p className='text-stone-500 text-sm'>
-                Supplier: {selectedSupplier.name}
-              </p>
-            </div>
-            <div className='p-6'>
-              <p>Purchase order form would go here.</p>
-            </div>
-            <div className='p-6 border-t border-stone-200 flex justify-end space-x-3'>
-              <button
-                onClick={() => setShowCreatePurchase(false)}
-                className='px-4 py-2 bg-stone-100 text-stone-700 rounded-md'
-              >
-                Cancel
-              </button>
-              <button className='px-4 py-2 bg-amber-600 text-white rounded-md'>
-                Create Order
-              </button>
-            </div>
-          </div>
-        </div>
+        <CreatePurchaseOrderModal
+          onClose={() => setShowCreatePurchase(false)}
+          initialSupplierId={selectedSupplier.id}
+        />
+      )}
+      
+      {/* Add Supplier Form */}
+      {showAddSupplierForm && (
+        <SupplierForm
+          onClose={() => setShowAddSupplierForm(false)}
+          onSuccess={handleFormSuccess}
+        />
+      )}
+      
+      {/* Edit Supplier Form */}
+      {supplierToEdit && (
+        <SupplierForm
+          initialSupplier={supplierToEdit}
+          onClose={() => setSupplierToEdit(null)}
+          onSuccess={handleFormSuccess}
+        />
       )}
     </div>
   );

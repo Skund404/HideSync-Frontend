@@ -3,9 +3,8 @@
 import { ExternalLink, X } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { useDocumentation } from '../../../context/DocumentationContext';
+import { DocumentationResource } from '../../../types/documentationTypes';
 import ContentRenderer from '../ContentRenderer';
-// Remove the unused import if you're not using it
-// import { useContextHelp } from './ContextHelpProvider';
 
 interface ContextHelpOverlayProps {
   targetSelector: string;
@@ -26,9 +25,9 @@ const ContextHelpOverlay: React.FC<ContextHelpOverlayProps> = ({
   isVisible,
   onClose,
 }) => {
-  // Remove the unused contextHelp variable
+  // Use getContextualHelp instead of getContextHelp for better semantic naming
   const { getContextualHelp } = useDocumentation();
-  const [helpContent, setHelpContent] = useState<any[]>([]);
+  const [helpContent, setHelpContent] = useState<DocumentationResource[]>([]);
   const [loading, setLoading] = useState(false);
   const [overlayPosition, setOverlayPosition] = useState({ top: 0, left: 0 });
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -36,7 +35,7 @@ const ContextHelpOverlay: React.FC<ContextHelpOverlayProps> = ({
   // Fetch help content
   useEffect(() => {
     const fetchHelp = async () => {
-      if (isVisible) {
+      if (isVisible && contextKey) {
         setLoading(true);
         try {
           const resources = await getContextualHelp(contextKey);
@@ -140,7 +139,7 @@ const ContextHelpOverlay: React.FC<ContextHelpOverlayProps> = ({
           </div>
         ) : (
           <div className='text-center text-gray-500 py-4 text-sm'>
-            <p>No help content available.</p>
+            <p>No help content available for "{contextKey}"</p>
           </div>
         )}
       </div>

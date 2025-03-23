@@ -2,11 +2,15 @@
 //
 // A modal component for viewing and editing tool details.
 // Used in the Tool Management module for detailed information display.
+// Updated to work with API integration.
 
+import ErrorMessage from '@/components/common/ErrorMessage';
+import LoadingSpinner from '@/components/common/LoadingSpinner';
 import { useTools } from '@/context/ToolContext';
+import useToast from '@/hooks/useToast';
 import { Tool, ToolCategory, ToolStatus } from '@/types/toolType';
 import { AlertTriangle, Clock, Edit, XCircle } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface ToolDetailModalProps {
   tool: Tool | null;
@@ -15,24 +19,39 @@ interface ToolDetailModalProps {
   readOnly?: boolean;
 }
 
+// Define interface for extended tool data (UI extensions mentioned in toolType.ts)
+interface ExtendedToolData {
+  reportedBy?: string;
+  damageReport?: string;
+  reportedDamagedDate?: string;
+  reportedLostDate?: string;
+}
+
+// Extend the Tool type with UI extensions
+type ExtendedTool = Tool & ExtendedToolData;
+
 const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
   tool,
   isOpen,
   onClose,
   readOnly = false,
 }) => {
-  const { updateTool } = useTools();
+  const { updateTool, loading, error } = useTools();
   const [isEditing, setIsEditing] = useState(false);
-  const [editedTool, setEditedTool] = useState<Tool | null>(tool);
+  const [editedTool, setEditedTool] = useState<Tool | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const { showToast } = useToast();
+
+  // Move useEffect to the top level, before any conditional returns
+  useEffect(() => {
+    if (tool !== editedTool && !isEditing) {
+      setEditedTool(tool);
+    }
+  }, [tool, editedTool, isEditing]);
 
   // If the modal is not open or there's no tool, don't render anything
   if (!isOpen || !tool) {
     return null;
-  }
-
-  // Update local state when the tool prop changes
-  if (tool !== editedTool && !isEditing) {
-    setEditedTool(tool);
   }
 
   const handleInputChange = (
@@ -57,10 +76,18 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
     });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (editedTool) {
-      updateTool(editedTool);
-      setIsEditing(false);
+      try {
+        setIsSaving(true);
+        await updateTool(editedTool);
+        setIsEditing(false);
+        showToast('success', 'Tool updated successfully');
+      } catch (error) {
+        showToast('error', 'Failed to update tool');
+      } finally {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -100,6 +127,24 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
 
   const daysUntilMaintenance = calculateDaysUntilMaintenance();
 
+  // Cast tool to ExtendedTool to access UI extension properties
+  const extendedTool = tool as ExtendedTool;
+
+  // Show loading spinner while tool is being fetched (first load)
+  if (loading.tools && !tool) {
+    return (
+      <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4'>
+        <div className='bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6'>
+          <LoadingSpinner
+            size='medium'
+            color='amber'
+            message='Loading tool details...'
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4'>
       <div className='bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto'>
@@ -113,6 +158,7 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
               <button
                 onClick={() => setIsEditing(true)}
                 className='p-2 text-amber-600 hover:text-amber-800 rounded-full'
+                disabled={isSaving}
               >
                 <Edit className='w-5 h-5' />
               </button>
@@ -120,6 +166,7 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
             <button
               onClick={onClose}
               className='p-2 text-stone-500 hover:text-stone-700 rounded-full'
+              disabled={isSaving}
             >
               <XCircle className='w-5 h-5' />
             </button>
@@ -128,6 +175,23 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
 
         {/* Content */}
         <div className='p-6'>
+          {/* Error display if any */}
+          {error.tools && (
+            <div className='mb-4'>
+              <ErrorMessage message={error.tools} />
+            </div>
+          )}
+
+          {isSaving && (
+            <div className='mb-4'>
+              <LoadingSpinner
+                size='small'
+                color='amber'
+                message='Saving changes...'
+              />
+            </div>
+          )}
+
           {/* Basic Information Section */}
           <div className='mb-6'>
             <h3 className='text-lg font-medium text-stone-800 mb-4'>
@@ -162,6 +226,7 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
                       value={editedTool?.name || ''}
                       onChange={handleInputChange}
                       className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
+                      disabled={isSaving}
                     />
                   ) : (
                     <div className='text-stone-800'>{tool.name}</div>
@@ -178,6 +243,7 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
                       value={editedTool?.category || ''}
                       onChange={handleInputChange}
                       className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
+                      disabled={isSaving}
                     >
                       {Object.values(ToolCategory).map((category) => (
                         <option key={category} value={category}>
@@ -200,6 +266,7 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
                       value={editedTool?.status || ''}
                       onChange={handleInputChange}
                       className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
+                      disabled={isSaving}
                     >
                       {Object.values(ToolStatus).map((status) => (
                         <option key={status} value={status}>
@@ -229,6 +296,7 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
                       value={editedTool?.location || ''}
                       onChange={handleInputChange}
                       className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
+                      disabled={isSaving}
                     />
                   ) : (
                     <div className='text-stone-800'>{tool.location}</div>
@@ -255,6 +323,7 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
                     value={editedTool?.brand || ''}
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
+                    disabled={isSaving}
                   />
                 ) : (
                   <div className='text-stone-800'>{tool.brand}</div>
@@ -272,6 +341,7 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
                     value={editedTool?.model || ''}
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
+                    disabled={isSaving}
                   />
                 ) : (
                   <div className='text-stone-800'>{tool.model}</div>
@@ -289,6 +359,7 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
                     value={editedTool?.serialNumber || ''}
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
+                    disabled={isSaving}
                   />
                 ) : (
                   <div className='text-stone-800'>{tool.serialNumber}</div>
@@ -306,6 +377,7 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
                     value={editedTool?.supplier || ''}
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
+                    disabled={isSaving}
                   />
                 ) : (
                   <div className='text-stone-800'>
@@ -325,6 +397,7 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
                     value={editedTool?.purchaseDate || ''}
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
+                    disabled={isSaving}
                   />
                 ) : (
                   <div className='text-stone-800'>
@@ -345,6 +418,7 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
                     step='0.01'
+                    disabled={isSaving}
                   />
                 ) : (
                   <div className='text-stone-800'>
@@ -372,6 +446,7 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
                     value={editedTool?.lastMaintenance || ''}
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
+                    disabled={isSaving}
                   />
                 ) : (
                   <div className='text-stone-800'>
@@ -391,6 +466,7 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
                     value={editedTool?.nextMaintenance || ''}
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
+                    disabled={isSaving}
                   />
                 ) : (
                   <div className='flex items-center'>
@@ -427,6 +503,7 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
                     value={editedTool?.maintenanceInterval || 0}
                     onChange={handleInputChange}
                     className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
+                    disabled={isSaving}
                   />
                 ) : (
                   <div className='text-stone-800'>
@@ -449,6 +526,7 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
                 onChange={handleInputChange}
                 className='w-full rounded-md border border-stone-300 py-2 px-3 text-sm'
                 rows={4}
+                disabled={isSaving}
               />
             ) : (
               <div className='text-stone-800 whitespace-pre-wrap bg-stone-50 p-4 rounded-md'>
@@ -495,55 +573,65 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
             </div>
           )}
 
-          {tool.status === ToolStatus.DAMAGED && tool.damageReport && (
+          {tool.status === ToolStatus.DAMAGED && (
             <div className='mb-6 bg-red-50 border border-red-100 rounded-md p-4'>
               <h3 className='text-md font-medium text-red-800 mb-2 flex items-center'>
                 <AlertTriangle className='h-5 w-5 mr-2' />
                 Damage Report
               </h3>
-              <div>
-                <span className='text-sm font-medium text-red-700'>
-                  Reported By:
-                </span>
-                <div className='text-red-800'>{tool.reportedBy}</div>
-              </div>
-              <div className='mt-2'>
-                <span className='text-sm font-medium text-red-700'>
-                  Description:
-                </span>
-                <div className='text-red-800'>{tool.damageReport}</div>
-              </div>
-              {tool.reportedDamagedDate && (
+              {extendedTool.reportedBy && (
+                <div>
+                  <span className='text-sm font-medium text-red-700'>
+                    Reported By:
+                  </span>
+                  <div className='text-red-800'>{extendedTool.reportedBy}</div>
+                </div>
+              )}
+              {extendedTool.damageReport && (
+                <div className='mt-2'>
+                  <span className='text-sm font-medium text-red-700'>
+                    Description:
+                  </span>
+                  <div className='text-red-800'>
+                    {extendedTool.damageReport}
+                  </div>
+                </div>
+              )}
+              {extendedTool.reportedDamagedDate && (
                 <div className='mt-2'>
                   <span className='text-sm font-medium text-red-700'>
                     Reported Date:
                   </span>
                   <div className='text-red-800'>
-                    {new Date(tool.reportedDamagedDate).toLocaleDateString()}
+                    {new Date(
+                      extendedTool.reportedDamagedDate
+                    ).toLocaleDateString()}
                   </div>
                 </div>
               )}
             </div>
           )}
 
-          {tool.status === ToolStatus.LOST && tool.reportedLostDate && (
+          {tool.status === ToolStatus.LOST && extendedTool.reportedLostDate && (
             <div className='mb-6 bg-red-50 border border-red-100 rounded-md p-4'>
               <h3 className='text-md font-medium text-red-800 mb-2 flex items-center'>
                 <AlertTriangle className='h-5 w-5 mr-2' />
                 Lost Report
               </h3>
-              <div>
-                <span className='text-sm font-medium text-red-700'>
-                  Reported By:
-                </span>
-                <div className='text-red-800'>{tool.reportedBy}</div>
-              </div>
+              {extendedTool.reportedBy && (
+                <div>
+                  <span className='text-sm font-medium text-red-700'>
+                    Reported By:
+                  </span>
+                  <div className='text-red-800'>{extendedTool.reportedBy}</div>
+                </div>
+              )}
               <div className='mt-2'>
                 <span className='text-sm font-medium text-red-700'>
                   Reported Date:
                 </span>
                 <div className='text-red-800'>
-                  {new Date(tool.reportedLostDate).toLocaleDateString()}
+                  {new Date(extendedTool.reportedLostDate).toLocaleDateString()}
                 </div>
               </div>
             </div>
@@ -557,20 +645,23 @@ const ToolDetailModal: React.FC<ToolDetailModalProps> = ({
               <button
                 onClick={handleCancel}
                 className='px-4 py-2 border border-stone-300 rounded-md text-stone-700 hover:bg-stone-50'
+                disabled={isSaving}
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
                 className='px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-md'
+                disabled={isSaving}
               >
-                Save Changes
+                {isSaving ? 'Saving...' : 'Save Changes'}
               </button>
             </>
           ) : (
             <button
               onClick={onClose}
               className='px-4 py-2 bg-stone-600 hover:bg-stone-700 text-white rounded-md'
+              disabled={isSaving}
             >
               Close
             </button>

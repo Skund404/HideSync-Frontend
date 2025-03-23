@@ -1,44 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useSales } from '../../context/SalesContext';
-import { Sale, SalesChannel } from '../../types/salesTypes';
+import * as revenueService from '../../services/revenue-analytics-service';
+import {
+  DateRange,
+  RevenueMetrics,
+} from '../../services/revenue-analytics-service';
+import ErrorMessage from '../common/ErrorMessage';
 import LoadingSpinner from '../common/LoadingSpinner';
-
-interface DateRange {
-  startDate: Date;
-  endDate: Date;
-}
-
-interface RevenueMetrics {
-  totalRevenue: number;
-  netRevenue: number;
-  totalFees: number;
-  totalShipping: number;
-  totalTax: number;
-  averageOrderValue: number;
-  orderCount: number;
-  byChannel: Record<
-    SalesChannel,
-    {
-      revenue: number;
-      orders: number;
-      netRevenue: number;
-      fees: number;
-      averageOrderValue: number;
-    }
-  >;
-  byMonth: Array<{
-    month: string;
-    revenue: number;
-    netRevenue: number;
-    orderCount: number;
-  }>;
-  byProduct: Array<{
-    productName: string;
-    quantity: number;
-    revenue: number;
-    averagePrice: number;
-  }>;
-}
 
 // Define the allowed timeframe keys
 type TimeFrameKey = '30days' | '90days' | 'year' | 'allTime' | 'custom';
@@ -51,15 +19,15 @@ const defaultDateRanges = {
 };
 
 const RevenueAnalytics: React.FC = () => {
-  const { sales, completedSales, loading, error } = useSales();
+  const { loading: salesLoading, error: salesError } = useSales();
   const [dateRange, setDateRange] = useState<DateRange>({
     startDate: new Date(new Date().setDate(new Date().getDate() - 90)), // Default to last 90 days
     endDate: new Date(),
   });
   const [timeFrame, setTimeFrame] = useState<TimeFrameKey>('90days');
   const [metrics, setMetrics] = useState<RevenueMetrics | null>(null);
-  const [filteredSales, setFilteredSales] = useState<Sale[]>([]);
-  const [calculating, setCalculating] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Update date range when timeframe changes
   useEffect(() => {
@@ -74,28 +42,14 @@ const RevenueAnalytics: React.FC = () => {
     const range = defaultDateRanges[timeFrame];
 
     if (range.days === 0) {
-      // All time - use earliest date
-      const allSales = [...sales, ...completedSales];
-      if (allSales.length > 0) {
-        const dates = allSales.map((sale) => new Date(sale.createdAt));
-        const earliestDate = new Date(
-          Math.min(...dates.map((date) => date.getTime()))
-        );
-        setDateRange({
-          startDate: earliestDate,
-          endDate: today,
-        });
-      } else {
-        // No sales, default to a year ago
-        setDateRange({
-          startDate: new Date(
-            today.getFullYear() - 1,
-            today.getMonth(),
-            today.getDate()
-          ),
-          endDate: today,
-        });
-      }
+      // All time - use earliest date (we'll default to 5 years back since we don't know)
+      const earliestDate = new Date();
+      earliestDate.setFullYear(earliestDate.getFullYear() - 5);
+
+      setDateRange({
+        startDate: earliestDate,
+        endDate: today,
+      });
     } else {
       // Specific time frame
       setDateRange({
@@ -103,171 +57,32 @@ const RevenueAnalytics: React.FC = () => {
         endDate: new Date(),
       });
     }
-  }, [timeFrame, sales, completedSales]);
+  }, [timeFrame]);
 
-  // Filter sales by date range
+  // Fetch metrics when date range changes
   useEffect(() => {
-    if (!dateRange.startDate || !dateRange.endDate) return;
+    const fetchMetrics = async () => {
+      try {
+        setLoading(true);
+        setError(null);
 
-    const start = dateRange.startDate.getTime();
-    const end = dateRange.endDate.getTime();
+        // Use the revenue analytics service to get metrics
+        const revenueMetrics = await revenueService.getRevenueMetrics(
+          dateRange
+        );
+        setMetrics(revenueMetrics);
+      } catch (err) {
+        console.error('Error fetching revenue metrics:', err);
+        setError('Failed to load revenue metrics. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    const filtered = [...sales, ...completedSales].filter((sale) => {
-      const saleDate = new Date(sale.createdAt).getTime();
-      return saleDate >= start && saleDate <= end;
-    });
-
-    setFilteredSales(filtered);
-  }, [dateRange, sales, completedSales]);
-
-  // Calculate metrics when filtered sales change
-  useEffect(() => {
-    if (filteredSales.length === 0) {
-      setMetrics(null);
-      return;
+    if (!salesLoading) {
+      fetchMetrics();
     }
-
-    setCalculating(true);
-
-    try {
-      // Initialize metrics object
-      const newMetrics: RevenueMetrics = {
-        totalRevenue: 0,
-        netRevenue: 0,
-        totalFees: 0,
-        totalShipping: 0,
-        totalTax: 0,
-        averageOrderValue: 0,
-        orderCount: filteredSales.length,
-        byChannel: {} as Record<SalesChannel, any>,
-        byMonth: [],
-        byProduct: [],
-      };
-
-      // Initialize channel metrics
-      Object.values(SalesChannel).forEach((channel) => {
-        newMetrics.byChannel[channel] = {
-          revenue: 0,
-          orders: 0,
-          netRevenue: 0,
-          fees: 0,
-          averageOrderValue: 0,
-        };
-      });
-
-      // Map for tracking monthly data
-      const monthlyData: Record<
-        string,
-        {
-          revenue: number;
-          netRevenue: number;
-          orderCount: number;
-        }
-      > = {};
-
-      // Map for tracking product data
-      const productData: Record<
-        string,
-        {
-          quantity: number;
-          revenue: number;
-        }
-      > = {};
-
-      // Process sales data
-      filteredSales.forEach((sale) => {
-        // Total metrics
-        newMetrics.totalRevenue += sale.total;
-        newMetrics.totalFees += sale.platformFees || 0;
-        newMetrics.totalShipping += sale.shipping || 0;
-        newMetrics.totalTax += sale.taxes || 0;
-
-        // Calculate net revenue (may already be available on sale object)
-        const saleNetRevenue =
-          sale.netRevenue || sale.total - (sale.platformFees || 0);
-        newMetrics.netRevenue += saleNetRevenue;
-
-        // Channel metrics
-        const channelMetrics = newMetrics.byChannel[sale.channel];
-        channelMetrics.revenue += sale.total;
-        channelMetrics.orders += 1;
-        channelMetrics.fees += sale.platformFees || 0;
-        channelMetrics.netRevenue += saleNetRevenue;
-
-        // Monthly metrics
-        const saleDate = new Date(sale.createdAt);
-        const monthKey = `${saleDate.getFullYear()}-${String(
-          saleDate.getMonth() + 1
-        ).padStart(2, '0')}`;
-
-        if (!monthlyData[monthKey]) {
-          monthlyData[monthKey] = {
-            revenue: 0,
-            netRevenue: 0,
-            orderCount: 0,
-          };
-        }
-
-        monthlyData[monthKey].revenue += sale.total;
-        monthlyData[monthKey].netRevenue += saleNetRevenue;
-        monthlyData[monthKey].orderCount += 1;
-
-        // Product metrics
-        sale.items.forEach((item) => {
-          const productKey = item.name;
-
-          if (!productData[productKey]) {
-            productData[productKey] = {
-              quantity: 0,
-              revenue: 0,
-            };
-          }
-
-          productData[productKey].quantity += item.quantity;
-          productData[productKey].revenue += item.price * item.quantity;
-        });
-      });
-
-      // Calculate average order value
-      newMetrics.averageOrderValue =
-        newMetrics.totalRevenue / filteredSales.length;
-
-      // Calculate channel average order values
-      Object.values(SalesChannel).forEach((channel) => {
-        const channelData = newMetrics.byChannel[channel];
-        if (channelData.orders > 0) {
-          channelData.averageOrderValue =
-            channelData.revenue / channelData.orders;
-        }
-      });
-
-      // Convert monthly data to sorted array
-      newMetrics.byMonth = Object.entries(monthlyData)
-        .map(([month, data]) => ({
-          month,
-          revenue: data.revenue,
-          netRevenue: data.netRevenue,
-          orderCount: data.orderCount,
-        }))
-        .sort((a, b) => a.month.localeCompare(b.month));
-
-      // Convert product data to sorted array (by revenue, descending)
-      newMetrics.byProduct = Object.entries(productData)
-        .map(([productName, data]) => ({
-          productName,
-          quantity: data.quantity,
-          revenue: data.revenue,
-          averagePrice: data.revenue / data.quantity,
-        }))
-        .sort((a, b) => b.revenue - a.revenue);
-
-      setMetrics(newMetrics);
-    } catch (err) {
-      console.error('Error calculating metrics:', err);
-    } finally {
-      setCalculating(false);
-    }
-  }, [filteredSales]);
+  }, [dateRange, salesLoading]);
 
   // Handle custom date range changes
   const handleDateRangeChange = (
@@ -313,12 +128,19 @@ const RevenueAnalytics: React.FC = () => {
     )} ${year}`;
   };
 
-  if (loading) {
+  if (salesLoading || loading) {
     return <LoadingSpinner />;
   }
 
-  if (error) {
-    return <div className='bg-red-50 p-4 rounded-md text-red-800'>{error}</div>;
+  if (salesError || error) {
+    return (
+      <ErrorMessage
+        message={error || salesError || 'An error occurred'}
+        onRetry={() => {
+          setDateRange({ ...dateRange }); // Trigger a refresh
+        }}
+      />
+    );
   }
 
   return (
@@ -392,7 +214,7 @@ const RevenueAnalytics: React.FC = () => {
           )}
         </div>
 
-        {calculating ? (
+        {loading ? (
           <div className='py-10 flex justify-center'>
             <LoadingSpinner />
           </div>

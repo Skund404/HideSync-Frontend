@@ -1,3 +1,4 @@
+// src/components/financial/analysis/MarginAnalysis.tsx
 import { Activity, Calculator, DollarSign, TrendingUp } from 'lucide-react';
 import React, { useState } from 'react';
 import {
@@ -20,6 +21,8 @@ import {
   formatCurrency,
   formatPercentage,
 } from '../../../utils/financialHelpers';
+import LoadingSpinner from '../../common/LoadingSpinner';
+import ErrorMessage from '../../common/ErrorMessage';
 
 const COLORS = [
   '#0088FE',
@@ -31,7 +34,7 @@ const COLORS = [
 ];
 
 const MarginAnalysis: React.FC = () => {
-  const { productMetrics, materialCosts, loading } = useFinancial();
+  const { productMetrics, materialCosts, loading, loadingState, error, refreshData } = useFinancial();
   const [analysisType, setAnalysisType] = useState<
     'comparison' | 'breakdown' | 'breakeven' | 'elasticity'
   >('comparison');
@@ -51,13 +54,40 @@ const MarginAnalysis: React.FC = () => {
     elasticity: -1.2,
   });
 
-  if (loading) {
+  // Loading state based on needed data
+  const isLoading = loading || 
+    (analysisType === 'comparison' && loadingState.productMetrics) ||
+    (analysisType === 'breakdown' && loadingState.materialCosts);
+
+  if (isLoading) {
     return (
       <div className='flex items-center justify-center h-64'>
-        <div className='text-center'>
-          <div className='inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-600'></div>
-          <p className='mt-2 text-sm text-stone-500'>Loading margin data...</p>
-        </div>
+        <LoadingSpinner
+          size="medium"
+          color="amber"
+          message={`Loading ${analysisType} data...`}
+        />
+      </div>
+    );
+  }
+
+  // Handle error states
+  if (error) {
+    return (
+      <div className='flex items-center justify-center h-64'>
+        <ErrorMessage 
+          message="Unable to load margin analysis data. Please try again." 
+          onRetry={refreshData} 
+        />
+      </div>
+    );
+  }
+
+  // Check for required data based on analysis type
+  if (analysisType === 'comparison' && !productMetrics.length) {
+    return (
+      <div className='flex items-center justify-center h-64'>
+        <p className='text-stone-500'>No product metrics available for comparison analysis</p>
       </div>
     );
   }
@@ -94,9 +124,7 @@ const MarginAnalysis: React.FC = () => {
   const revenueChange = newRevenue - currentRevenue;
   const revenueChangePercent = (revenueChange / currentRevenue) * 100;
 
-  // Transform materialCosts (an array of MaterialCostTrend objects) into the shape:
-  // { name: string; value: number }[]
-  // Here we assume you want to use the latest month’s data.
+  // Transform materialCosts into cost breakdown data
   const costBreakdownData =
     materialCosts && materialCosts.length > 0
       ? (() => {
@@ -346,7 +374,7 @@ const MarginAnalysis: React.FC = () => {
           </div>
         )}
 
-        {/* Break-Even Analysis */}
+        {/* Break-Even Analysis - No API call needed for this calculation */}
         {analysisType === 'breakeven' && (
           <div>
             <h3 className='text-lg font-medium mb-4 flex items-center'>
@@ -434,7 +462,7 @@ const MarginAnalysis: React.FC = () => {
                       {formatCurrency(contributionMargin)}
                     </div>
                     <div className='text-xs text-amber-600'>
-                      Amount each unit contributes to fixed costs &amp; profit
+                      Amount each unit contributes to fixed costs & profit
                     </div>
                   </div>
 
@@ -446,7 +474,7 @@ const MarginAnalysis: React.FC = () => {
                       {formatPercentage(contributionMarginRatio)}
                     </div>
                     <div className='text-xs text-amber-600'>
-                      Percent of each sale that contributes to fixed costs &amp;
+                      Percent of each sale that contributes to fixed costs &
                       profit
                     </div>
                   </div>
@@ -494,7 +522,7 @@ const MarginAnalysis: React.FC = () => {
           </div>
         )}
 
-        {/* Price Elasticity Analysis */}
+        {/* Price Elasticity Analysis - No API call needed for this calculation */}
         {analysisType === 'elasticity' && (
           <div>
             <h3 className='text-lg font-medium mb-4 flex items-center'>

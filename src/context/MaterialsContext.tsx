@@ -1,26 +1,34 @@
+// src/context/MaterialsContext.tsx
+import { apiClient } from '@/services/api-client';
 import {
   AnimalSource,
   HardwareMaterialType,
-  HardwareType,
-  LeatherType,
+  HardwareSubtype,
+  LeatherSubtype,
   Material,
-  MaterialStatus,
   MaterialType,
   SuppliesType,
   TannageType,
 } from '@/types/materialTypes';
+
+import { handleApiError } from '@/utils/errorHandler';
 import React, {
   createContext,
   ReactNode,
+  useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from 'react';
+
+// Import our utilities
+import { normalizeMaterial } from '@/utils/materialTypeMapper';
 
 // Define view mode type to include 'storage' view
 export type ViewMode = 'grid' | 'list' | 'storage';
 
-// Define filter interfaces for each material type
+// Define filter interfaces for each material type - export for use elsewhere
 interface MaterialFilter {
   searchQuery: string;
   filterType: string | null;
@@ -31,8 +39,9 @@ interface MaterialFilter {
   filterSupplier: string | null;
 }
 
-interface LeatherFilter extends MaterialFilter {
-  filterLeatherType: LeatherType | null;
+// Export the interfaces so they're not marked as unused
+export interface LeatherFilter extends MaterialFilter {
+  filterLeatherType: LeatherSubtype | null;
   filterTannage: TannageType | null;
   filterAnimalSource: AnimalSource | null;
   filterThickness: string | null; // Range or specific values
@@ -40,13 +49,13 @@ interface LeatherFilter extends MaterialFilter {
   filterColor: string | null;
 }
 
-interface HardwareFilter extends MaterialFilter {
-  filterHardwareType: HardwareType | null;
+export interface HardwareFilter extends MaterialFilter {
+  filterHardwareType: HardwareSubtype | null;
   filterHardwareMaterial: HardwareMaterialType | null;
   filterSize: string | null;
 }
 
-interface SuppliesFilter extends MaterialFilter {
+export interface SuppliesFilter extends MaterialFilter {
   filterSuppliesType: SuppliesType | null;
   filterColor: string | null;
   filterComposition: string | null;
@@ -91,8 +100,8 @@ export interface MaterialsContextType {
   setFilterSupplier: (supplier: string | null) => void;
 
   // Specialized filters for leather
-  filterLeatherType: LeatherType | null;
-  setFilterLeatherType: (type: LeatherType | null) => void;
+  filterLeatherType: LeatherSubtype | null;
+  setFilterLeatherType: (type: LeatherSubtype | null) => void;
   filterTannage: TannageType | null;
   setFilterTannage: (tannage: TannageType | null) => void;
   filterAnimalSource: AnimalSource | null;
@@ -105,8 +114,8 @@ export interface MaterialsContextType {
   setFilterGrade: (grade: string | null) => void;
 
   // Specialized filters for hardware
-  filterHardwareType: HardwareType | null;
-  setFilterHardwareType: (type: HardwareType | null) => void;
+  filterHardwareType: HardwareSubtype | null;
+  setFilterHardwareType: (type: HardwareSubtype | null) => void;
   filterHardwareMaterial: HardwareMaterialType | null;
   setFilterHardwareMaterial: (material: HardwareMaterialType | null) => void;
 
@@ -134,14 +143,22 @@ export interface MaterialsContextType {
   suppliers: any[]; // Replace with your Supplier type
   fetchSuppliers: () => Promise<void>;
 
-  // Add this new method
+  // Apply filters method
   applyFilters: (materials: Material[]) => Material[];
+
+  // Refresh data
+  refresh: () => Promise<void>;
 }
 
 // Create the context with default values
 const MaterialsContext = createContext<MaterialsContextType | undefined>(
   undefined
 );
+
+// API endpoints
+const MATERIALS_ENDPOINT = '/materials';
+const STORAGE_ENDPOINT = '/storage/locations';
+const SUPPLIERS_ENDPOINT = '/suppliers';
 
 // Provider component
 export const MaterialsProvider: React.FC<{ children: ReactNode }> = ({
@@ -173,7 +190,7 @@ export const MaterialsProvider: React.FC<{ children: ReactNode }> = ({
 
   // Leather-specific filters
   const [filterLeatherType, setFilterLeatherType] =
-    useState<LeatherType | null>(null);
+    useState<LeatherSubtype | null>(null);
   const [filterTannage, setFilterTannage] = useState<TannageType | null>(null);
   const [filterAnimalSource, setFilterAnimalSource] =
     useState<AnimalSource | null>(null);
@@ -183,7 +200,7 @@ export const MaterialsProvider: React.FC<{ children: ReactNode }> = ({
 
   // Hardware-specific filters
   const [filterHardwareType, setFilterHardwareType] =
-    useState<HardwareType | null>(null);
+    useState<HardwareSubtype | null>(null);
   const [filterHardwareMaterial, setFilterHardwareMaterial] =
     useState<HardwareMaterialType | null>(null);
 
@@ -202,6 +219,48 @@ export const MaterialsProvider: React.FC<{ children: ReactNode }> = ({
     hardware: {},
     supplies: {},
   });
+
+  // Create a ref with proper initialization
+  const fetchMaterialsRef = useRef<() => Promise<void>>(() =>
+    Promise.resolve()
+  );
+
+  // Fetch storage locations - wrapped in useCallback
+  const fetchStorageLocations = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await apiClient.get(STORAGE_ENDPOINT);
+      setStorageLocations(response.data);
+      return Promise.resolve();
+    } catch (err: any) {
+      const errorMessage = handleApiError(
+        err,
+        'Failed to fetch storage locations'
+      );
+      setError(errorMessage);
+      return Promise.reject(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Fetch suppliers - wrapped in useCallback
+  const fetchSuppliers = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await apiClient.get(SUPPLIERS_ENDPOINT);
+      setSuppliers(response.data);
+      return Promise.resolve();
+    } catch (err: any) {
+      const errorMessage = handleApiError(err, 'Failed to fetch suppliers');
+      setError(errorMessage);
+      return Promise.reject(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   // Legacy setFilters method for backward compatibility
   const setFilters = (materialType: string, filters: Record<string, any>) => {
@@ -275,195 +334,254 @@ export const MaterialsProvider: React.FC<{ children: ReactNode }> = ({
     });
   };
 
-  // Apply filters to materials - NEW FUNCTION
-  const applyFilters = (materialsToFilter: Material[]): Material[] => {
-    return materialsToFilter.filter((material) => {
-      // Search query filtering
-      if (
-        searchQuery &&
-        !material.name.toLowerCase().includes(searchQuery.toLowerCase())
-      ) {
-        return false;
+  // Fetch materials data implementation
+  const fetchMaterials = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Build query parameters
+      let url = MATERIALS_ENDPOINT;
+      const params = new URLSearchParams();
+
+      if (activeTab) {
+        params.append('material_type', activeTab);
       }
 
-      // Common filters
-      if (filterType && material.materialType !== filterType) {
-        return false;
+      // Add common filters
+      if (filterStatus) params.append('status', filterStatus);
+      if (filterStorage) params.append('storage_location', filterStorage);
+      if (filterSupplier) params.append('supplier_id', filterSupplier);
+
+      // Add material-specific filters based on active tab
+      if (activeTab === MaterialType.LEATHER) {
+        if (filterLeatherType) params.append('leather_type', filterLeatherType);
+        if (filterTannage) params.append('tannage', filterTannage);
+        if (filterAnimalSource)
+          params.append('animal_source', filterAnimalSource);
+        if (filterColor) params.append('color', filterColor);
+        if (filterThickness) params.append('thickness', filterThickness);
+        if (filterGrade) params.append('grade', filterGrade);
+      } else if (activeTab === MaterialType.HARDWARE) {
+        if (filterHardwareType)
+          params.append('hardware_type', filterHardwareType);
+        if (filterHardwareMaterial)
+          params.append('hardware_material', filterHardwareMaterial);
+        if (filterFinish) params.append('finish', filterFinish);
+      } else if (activeTab === MaterialType.SUPPLIES) {
+        if (filterSuppliesType)
+          params.append('supplies_type', filterSuppliesType);
+        if (filterColor) params.append('color', filterColor);
       }
 
-      if (filterStatus && material.status !== filterStatus) {
-        return false;
+      // Add search query
+      if (searchQuery) params.append('search', searchQuery);
+
+      // Append params to URL if there are any
+      const queryString = params.toString();
+      if (queryString) {
+        url = `${url}?${queryString}`;
       }
 
-      if (filterStorage && material.storageLocation !== filterStorage) {
-        return false;
-      }
+      const response = await apiClient.get<Material[]>(url);
+      setMaterials(response.data);
+    } catch (err: any) {
+      const errorMessage = handleApiError(err, 'Failed to fetch materials');
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    activeTab,
+    filterStatus,
+    filterStorage,
+    filterSupplier,
+    filterLeatherType,
+    filterTannage,
+    filterAnimalSource,
+    filterColor,
+    filterThickness,
+    filterGrade,
+    filterHardwareType,
+    filterHardwareMaterial,
+    filterFinish,
+    filterSuppliesType,
+    searchQuery,
+  ]);
 
-      if (filterSupplier && material.supplier !== filterSupplier) {
-        return false;
-      }
+  // Store the fetchMaterials function in a ref to avoid dependency cycle issues
+  useEffect(() => {
+    fetchMaterialsRef.current = fetchMaterials;
+  }, [fetchMaterials]);
 
-      // Material-specific filters
-      if (material.materialType === MaterialType.LEATHER) {
-        const leatherMaterial = material as any;
+  // Refresh all data - now using properly declared functions
+  const refresh = useCallback(async () => {
+    try {
+      await Promise.all([
+        fetchMaterialsRef.current(),
+        fetchStorageLocations(),
+        fetchSuppliers(),
+      ]);
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    }
+  }, [fetchStorageLocations, fetchSuppliers]);
 
+  // Apply filters to materials
+  const applyFilters = useCallback(
+    (materialsToFilter: Material[]): Material[] => {
+      return materialsToFilter.filter((material) => {
+        // Search query filtering
         if (
-          filterLeatherType &&
-          leatherMaterial.leatherType !== filterLeatherType
+          searchQuery &&
+          !material.name.toLowerCase().includes(searchQuery.toLowerCase())
         ) {
           return false;
         }
 
-        if (filterTannage && leatherMaterial.tannage !== filterTannage) {
+        // Common filters
+        if (filterType && material.materialType !== filterType) {
           return false;
         }
 
-        if (
-          filterAnimalSource &&
-          leatherMaterial.animalSource !== filterAnimalSource
-        ) {
+        if (filterStatus && material.status !== filterStatus) {
           return false;
         }
 
-        if (filterColor && leatherMaterial.color !== filterColor) {
+        if (filterStorage && material.storageLocation !== filterStorage) {
           return false;
         }
 
-        if (filterThickness) {
-          // Basic thickness filtering
+        if (filterSupplier && material.supplierId !== filterSupplier) {
+          return false;
+        }
+
+        // Material-specific filters
+        if (material.materialType === MaterialType.LEATHER) {
+          const leatherMaterial = material as any;
+
           if (
-            !leatherMaterial.thickness ||
-            leatherMaterial.thickness.toString() !== filterThickness
+            filterLeatherType &&
+            leatherMaterial.subtype !== filterLeatherType
+          ) {
+            return false;
+          }
+
+          if (filterTannage && leatherMaterial.tannage !== filterTannage) {
+            return false;
+          }
+
+          if (
+            filterAnimalSource &&
+            leatherMaterial.animalSource !== filterAnimalSource
+          ) {
+            return false;
+          }
+
+          if (filterColor && leatherMaterial.color !== filterColor) {
+            return false;
+          }
+
+          if (filterThickness) {
+            // Basic thickness filtering
+            if (
+              !leatherMaterial.thickness ||
+              leatherMaterial.thickness.toString() !== filterThickness
+            ) {
+              return false;
+            }
+          }
+
+          if (filterGrade && leatherMaterial.grade !== filterGrade) {
+            return false;
+          }
+        } else if (material.materialType === MaterialType.HARDWARE) {
+          const hardwareMaterial = material as any;
+
+          if (
+            filterHardwareType &&
+            hardwareMaterial.subtype !== filterHardwareType
+          ) {
+            return false;
+          }
+
+          if (
+            filterHardwareMaterial &&
+            hardwareMaterial.hardwareMaterial !== filterHardwareMaterial
+          ) {
+            return false;
+          }
+
+          if (filterFinish && hardwareMaterial.finish !== filterFinish) {
+            return false;
+          }
+
+          if (filterMaterial && hardwareMaterial.size !== filterMaterial) {
+            return false;
+          }
+        } else if (material.materialType === MaterialType.SUPPLIES) {
+          const suppliesMaterial = material as any;
+
+          if (
+            filterSuppliesType &&
+            suppliesMaterial.subtype !== filterSuppliesType
+          ) {
+            return false;
+          }
+
+          if (filterColor && suppliesMaterial.color !== filterColor) {
+            return false;
+          }
+
+          if (
+            filterMaterial &&
+            suppliesMaterial.composition !== filterMaterial
           ) {
             return false;
           }
         }
 
-        if (filterGrade && leatherMaterial.grade !== filterGrade) {
-          return false;
-        }
-      } else if (material.materialType === MaterialType.HARDWARE) {
-        const hardwareMaterial = material as any;
-
-        if (
-          filterHardwareType &&
-          hardwareMaterial.hardwareType !== filterHardwareType
-        ) {
-          return false;
-        }
-
-        if (
-          filterHardwareMaterial &&
-          hardwareMaterial.hardwareMaterial !== filterHardwareMaterial
-        ) {
-          return false;
-        }
-
-        if (filterFinish && hardwareMaterial.finish !== filterFinish) {
-          return false;
-        }
-
-        if (filterMaterial && hardwareMaterial.size !== filterMaterial) {
-          return false;
-        }
-      } else if (
-        material.materialType === MaterialType.SUPPLIES ||
-        material.materialType === MaterialType.THREAD ||
-        material.materialType === MaterialType.WAXED_THREAD ||
-        material.materialType === MaterialType.DYE ||
-        material.materialType === MaterialType.EDGE_PAINT ||
-        material.materialType === MaterialType.BURNISHING_GUM ||
-        material.materialType === MaterialType.ADHESIVE ||
-        material.materialType === MaterialType.FINISH
-      ) {
-        const suppliesMaterial = material as any;
-
-        if (
-          filterSuppliesType &&
-          suppliesMaterial.suppliesMaterialType !== filterSuppliesType
-        ) {
-          return false;
-        }
-
-        if (filterColor && suppliesMaterial.color !== filterColor) {
-          return false;
-        }
-
-        if (
-          filterMaterial &&
-          suppliesMaterial.materialComposition !== filterMaterial
-        ) {
-          return false;
-        }
-      }
-
-      // If all filters pass, include the material
-      return true;
-    });
-  };
-
-  // Fetch materials data
-  const fetchMaterials = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // In a real app, this would be an API call with proper filtering
-      // For now, simulate with mock data
-      setTimeout(() => {
-        const mockMaterials = [
-          {
-            id: 1,
-            name: 'Vegetable Tanned Leather',
-            materialType: MaterialType.LEATHER,
-            status: MaterialStatus.IN_STOCK,
-            quantity: 3,
-            leatherType: LeatherType.VEGETABLE_TANNED,
-            thickness: 3.5,
-            supplier: 'Tandy Leather',
-            storageLocation: 'Cabinet 1A',
-            color: 'tan',
-          },
-          {
-            id: 2,
-            name: 'Brass Buckles',
-            materialType: MaterialType.HARDWARE,
-            status: MaterialStatus.IN_STOCK,
-            quantity: 25,
-            hardwareType: HardwareType.BUCKLE,
-            supplier: 'Hardware Supply Co',
-            storageLocation: 'Drawer 2D',
-            hardwareMaterial: 'brass',
-            size: '1 inch',
-          },
-          {
-            id: 3,
-            name: 'Waxed Thread',
-            materialType: MaterialType.SUPPLIES,
-            status: MaterialStatus.LOW_STOCK,
-            quantity: 2,
-            suppliesMaterialType: 'thread',
-            supplier: 'Thread & Needle',
-            storageLocation: 'Box 4B',
-            color: 'black',
-          },
-        ];
-        setMaterials(mockMaterials);
-        setLoading(false);
-      }, 500);
-    } catch (err) {
-      setError('Failed to fetch materials');
-      setLoading(false);
-    }
-  };
+        // If all filters pass, include the material
+        return true;
+      });
+    },
+    [
+      searchQuery,
+      filterType,
+      filterStatus,
+      filterStorage,
+      filterSupplier,
+      filterLeatherType,
+      filterTannage,
+      filterAnimalSource,
+      filterColor,
+      filterThickness,
+      filterGrade,
+      filterHardwareType,
+      filterHardwareMaterial,
+      filterFinish,
+      filterMaterial,
+      filterSuppliesType,
+    ]
+  );
 
   // Add material
   const addMaterial = async (material: Material) => {
-    // In a real app, this would call the API
+    setLoading(true);
+    setError(null);
     try {
-      // Mock implementation
-      setMaterials([...materials, { ...material, id: Date.now() }]);
-    } catch (err) {
-      setError('Failed to add material');
+      const normalizedMaterial = normalizeMaterial(material);
+      const response = await apiClient.post<Material>(
+        MATERIALS_ENDPOINT,
+        normalizedMaterial
+      );
+      setMaterials((prev) => [...prev, response.data]);
+      return Promise.resolve();
+    } catch (err: any) {
+      const errorMessage = handleApiError(err, 'Failed to add material');
+      setError(errorMessage);
+      return Promise.reject(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -472,82 +590,66 @@ export const MaterialsProvider: React.FC<{ children: ReactNode }> = ({
     id: number | string,
     material: Partial<Material>
   ) => {
-    // In a real app, this would call the API
+    setLoading(true);
+    setError(null);
     try {
-      // Mock implementation
-      setMaterials(
-        materials.map((item) =>
-          item.id === id ? { ...item, ...material } : item
-        )
+      const normalizedId = typeof id === 'string' ? parseInt(id, 10) : id;
+      const normalizedMaterial = normalizeMaterial(material);
+
+      const response = await apiClient.put<Material>(
+        `${MATERIALS_ENDPOINT}/${normalizedId}`,
+        normalizedMaterial
       );
-    } catch (err) {
-      setError('Failed to update material');
+
+      setMaterials((prev) =>
+        prev.map((item) => (item.id === id ? response.data : item))
+      );
+      return Promise.resolve();
+    } catch (err: any) {
+      const errorMessage = handleApiError(err, 'Failed to update material');
+      setError(errorMessage);
+      return Promise.reject(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
   // Delete material
   const deleteMaterial = async (id: number | string) => {
-    // In a real app, this would call the API
+    setLoading(true);
+    setError(null);
     try {
-      // Mock implementation
-      setMaterials(materials.filter((item) => item.id !== id));
-    } catch (err) {
-      setError('Failed to delete material');
-    }
-  };
-
-  // Fetch storage locations
-  const fetchStorageLocations = async () => {
-    // In a real app, this would call the API
-    try {
-      // Mock implementation
-      const mockStorageLocations = [
-        {
-          id: '1A',
-          name: 'Cabinet 1A',
-          type: 'Cabinet',
-          capacity: 100,
-          utilized: 65,
-        },
-        {
-          id: '2D',
-          name: 'Drawer 2D',
-          type: 'Drawer',
-          capacity: 80,
-          utilized: 42,
-        },
-        { id: '4B', name: 'Box 4B', type: 'Box', capacity: 50, utilized: 30 },
-      ];
-      setStorageLocations(mockStorageLocations);
-    } catch (err) {
-      setError('Failed to fetch storage locations');
-    }
-  };
-
-  // Fetch suppliers
-  const fetchSuppliers = async () => {
-    // In a real app, this would call the API
-    try {
-      // Mock implementation
-      const mockSuppliers = [
-        { id: 1, name: 'Tandy Leather', status: 'active' },
-        { id: 2, name: 'Hardware Supply Co', status: 'active' },
-        { id: 3, name: 'Thread & Needle', status: 'active' },
-      ];
-      setSuppliers(mockSuppliers);
-    } catch (err) {
-      setError('Failed to fetch suppliers');
+      const normalizedId = typeof id === 'string' ? parseInt(id, 10) : id;
+      await apiClient.delete(`${MATERIALS_ENDPOINT}/${normalizedId}`);
+      setMaterials((prev) => prev.filter((item) => item.id !== id));
+      return Promise.resolve();
+    } catch (err: any) {
+      const errorMessage = handleApiError(err, 'Failed to delete material');
+      setError(errorMessage);
+      return Promise.reject(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
   // Initial data loading
   useEffect(() => {
-    fetchMaterials();
-    fetchStorageLocations();
-    fetchSuppliers();
-  }, []);
+    const loadInitialData = async () => {
+      try {
+        await Promise.all([
+          fetchMaterials(),
+          fetchStorageLocations(),
+          fetchSuppliers(),
+        ]);
+      } catch (error) {
+        console.error('Error loading initial data:', error);
+      }
+    };
 
-  // Refresh data when relevant filters change
+    loadInitialData();
+  }, [fetchMaterials, fetchStorageLocations, fetchSuppliers]);
+
+  // Refresh materials data when relevant filters change
   useEffect(() => {
     fetchMaterials();
   }, [
@@ -557,6 +659,16 @@ export const MaterialsProvider: React.FC<{ children: ReactNode }> = ({
     filterStatus,
     filterStorage,
     filterSupplier,
+    filterLeatherType,
+    filterTannage,
+    filterAnimalSource,
+    filterThickness,
+    filterGrade,
+    filterHardwareType,
+    filterHardwareMaterial,
+    filterSuppliesType,
+    filterColor,
+    fetchMaterials,
   ]);
 
   // Context value
@@ -624,8 +736,6 @@ export const MaterialsProvider: React.FC<{ children: ReactNode }> = ({
 
     // Utility functions
     clearFilters,
-
-    // NEW: Add the applyFilters function
     applyFilters,
 
     // Storage management
@@ -635,6 +745,9 @@ export const MaterialsProvider: React.FC<{ children: ReactNode }> = ({
     // Suppliers
     suppliers,
     fetchSuppliers,
+
+    // Refresh data
+    refresh,
   };
 
   return (

@@ -1,447 +1,417 @@
 // src/components/materials/MaterialStorageAssignment.tsx
-import { useStorage } from '@/context/StorageContext';
-import { Material } from '@/types/models';
-import { StorageCell, StorageLocation } from '@types';
-import React, { useEffect, useState } from 'react';
-import { StorageMoveRequest } from '../../types/storage';
+import React, { useState, useEffect, useMemo, ChangeEvent } from 'react';
+import { useMaterials } from "@/context/MaterialsContext";
+import { useStorage } from "@/context/StorageContext";
+import { 
+  HardwareSubtype, 
+  HardwareMaterialType, 
+  MaterialType, 
+  Material,
+  isHardwareMaterial,
+  LeatherSubtype,
+  SuppliesSubtype,
+  isLeatherMaterial,
+  isSuppliesMaterial
+} from "@/types/materialTypes";
+import { StorageLocation } from "@/types/storage";
+import { formatType } from "@/utils/materialHelpers";
+import { 
+  AlertDialog, 
+  AlertDialogAction, 
+  AlertDialogCancel, 
+  AlertDialogContent, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogHeader, 
+  AlertDialogTitle, 
+  AlertDialogTrigger 
+} from "@/components/ui/alert-dialog"; // Ensure this path exists
+import { Button } from "@/components/ui/button"; // Ensure this path exists
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select"; // Ensure this path exists
+import { Input } from "@/components/ui/input"; // Ensure this path exists
+import { 
+  Tabs, 
+  TabsContent, 
+  TabsList, 
+  TabsTrigger 
+} from "@/components/ui/tabs"; // Ensure this path exists
+import { Loader2, Box, Layers, Droplet } from "lucide-react";
+import { Badge } from "@/components/ui/badge"; // Ensure this path exists
 
-interface MaterialStorageAssignmentProps {
-  material: Material;
-  onClose: () => void;
-  onAssigned: () => void;
+// Enum for material categories
+enum MaterialCategory {
+  HARDWARE = 'hardware',
+  LEATHER = 'leather',
+  SUPPLIES = 'supplies'
 }
 
-const MaterialStorageAssignment: React.FC<MaterialStorageAssignmentProps> = ({
-  material,
-  onClose,
-  onAssigned,
-}) => {
-  const { storageLocations, storageCells, fetchStorageCells, moveItem } =
-    useStorage();
+// Interface for storage assignment
+interface StorageAssignment {
+  materialId: string;
+  materialType: MaterialType;
+  storageId: string;
+  quantity: number;
+  notes?: string;
+}
 
-  const [selectedLocation, setSelectedLocation] =
-    useState<StorageLocation | null>(null);
-  const [selectedCell, setSelectedCell] = useState<StorageCell | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // Current storage info
-  const [currentStorage, setCurrentStorage] = useState<{
-    locationId: string;
-    position: { x: number; y: number; z?: number };
-  } | null>(null);
+// Adjust the type for Tabs component props
+interface CustomTabsProps {
+  value: MaterialCategory;
+  onValueChange: (value: MaterialCategory) => void;
+  children: React.ReactNode;
+  className?: string;
+}
 
-  // Filter for locations that have available space
-  const availableLocations = storageLocations.filter(
-    (location) => location.utilized < location.capacity
-  );
+const MaterialStorageAssignment: React.FC = () => {
+  const { 
+    materials, 
+    loading: materialsLoading 
+  } = useMaterials();
+  
+  const { 
+    storageLocations, 
+    assignMaterialToStorage,
+    loading: storageLoading 
+  } = useStorage();
 
-  // Load the current storage information if the material is already stored
-  useEffect(() => {
-    const loadCurrentStorage = async () => {
-      try {
-        // This would be a backend call in a real app
-        // Here we just search through all cells to find our material
-        for (const location of storageLocations) {
-          await fetchStorageCells(location.id);
-          const materialCell = storageCells.find(
-            (cell) =>
-              cell.itemId === material.id &&
-              cell.itemType === material.materialType.toLowerCase()
-          );
+  // State for form inputs
+  const [selectedCategory, setSelectedCategory] = useState<MaterialCategory>(MaterialCategory.HARDWARE);
+  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
+  const [selectedStorage, setSelectedStorage] = useState<StorageLocation | null>(null);
+  const [quantity, setQuantity] = useState<string>('');
+  const [notes, setNotes] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-          if (materialCell) {
-            setCurrentStorage({
-              locationId: materialCell.storageId,
-              position: materialCell.position,
-            });
-            break;
-          }
-        }
-      } catch (err) {
-        console.error('Error loading current storage:', err);
-      }
-    };
-
-    loadCurrentStorage();
-  }, [material, storageLocations, storageCells, fetchStorageCells]);
-
-  // Load cells for the selected location
-  useEffect(() => {
-    if (selectedLocation) {
-      const loadCells = async () => {
-        setLoading(true);
-        try {
-          await fetchStorageCells(selectedLocation.id);
-        } catch (err) {
-          console.error('Error loading cells:', err);
-          setError('Failed to load storage cells');
-        } finally {
-          setLoading(false);
-        }
-      };
-
-      loadCells();
+  // Filtered materials based on selected category
+  const filteredMaterials = useMemo(() => {
+    switch (selectedCategory) {
+      case MaterialCategory.HARDWARE:
+        return materials.filter(isHardwareMaterial);
+      case MaterialCategory.LEATHER:
+        return materials.filter(isLeatherMaterial);
+      case MaterialCategory.SUPPLIES:
+        return materials.filter(isSuppliesMaterial);
+      default:
+        return [];
     }
-  }, [selectedLocation, fetchStorageCells]);
+  }, [materials, selectedCategory]);
 
-  // Get available cells for the selected location
-  const getAvailableCells = (): StorageCell[] => {
-    if (!selectedLocation) return [];
+  // Reset material selection when category changes
+  useEffect(() => {
+    setSelectedMaterial(null);
+  }, [selectedCategory]);
 
-    return storageCells.filter(
-      (cell) => cell.storageId === selectedLocation.id && !cell.occupied
-    );
+  // Handle material selection
+  const handleMaterialSelect = (materialId: string) => {
+    const material = filteredMaterials.find(m => m.id === materialId);
+    setSelectedMaterial(material || null);
   };
 
-  // Format cell position for display
-  const formatPosition = (position: {
-    x: number;
-    y: number;
-    z?: number;
-  }): string => {
-    return position.z !== undefined
-      ? `(${position.x}, ${position.y}, ${position.z})`
-      : `(${position.x}, ${position.y})`;
+  // Handle storage selection
+  const handleStorageSelect = (storageId: string) => {
+    const storage = storageLocations.find(s => s.id === storageId);
+    setSelectedStorage(storage || null);
   };
 
-  // Handle cell selection
-  const handleCellSelect = (cell: StorageCell) => {
-    setSelectedCell(cell);
-  };
-
-  // Handle submit - move the item to the selected location
+  // Handle form submission
   const handleSubmit = async () => {
-    if (!selectedLocation || !selectedCell) {
-      setError('Please select a storage location and cell');
+    if (!selectedMaterial || !selectedStorage) {
+      // Show error or return early
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    const parsedQuantity = parseFloat(quantity);
+    if (isNaN(parsedQuantity) || parsedQuantity <= 0) {
+      // Show quantity error
+      return;
+    }
 
     try {
-      const moveRequest: Omit<
-        StorageMoveRequest,
-        'id' | 'requestDate' | 'requestedBy'
-      > = {
-        itemId: material.id,
-        itemType: material.materialType.toLowerCase(),
-        quantity: 1, // Assuming one unit being moved
-        fromStorageId: currentStorage?.locationId || '',
-        fromPosition: currentStorage?.position || { x: 0, y: 0 },
-        toStorageId: selectedCell.storageId,
-        toPosition: selectedCell.position,
-        completedDate: new Date().toISOString(),
-        completedBy: 'Current User', // In a real app, this would be the current user
-        notes: `Moved ${material.name} to ${selectedLocation.name}`,
-        status: 'completed', // Use string literal for status that matches expected value
+      setIsSubmitting(true);
+      
+      // Prepare storage assignment payload
+      const assignmentPayload: StorageAssignment = {
+        materialId: selectedMaterial.id,
+        materialType: selectedMaterial.materialType,
+        storageId: selectedStorage.id,
+        quantity: parsedQuantity,
+        notes: notes || undefined
       };
 
-      await moveItem(moveRequest);
-      onAssigned();
-      onClose();
-    } catch (err) {
-      console.error('Error moving item:', err);
-      setError('Failed to move the item. Please try again.');
+      // Update the method call to match the expected signature
+      await assignMaterialToStorage(
+        assignmentPayload.materialId, 
+        assignmentPayload.materialType, 
+        assignmentPayload.storageId, 
+        assignmentPayload.quantity,
+        assignmentPayload.notes
+      );
+
+      // Reset form
+      setSelectedMaterial(null);
+      setSelectedStorage(null);
+      setQuantity('');
+      setNotes('');
+    } catch (error) {
+      // Handle error
+      console.error('Storage assignment failed', error);
+      // Optionally show error toast or message
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
-  return (
-    <div className='bg-white rounded-lg shadow-lg overflow-hidden max-w-2xl mx-auto'>
-      <div className='px-6 py-4 bg-stone-50 border-b border-stone-200 flex justify-between items-center'>
-        <h3 className='text-lg font-medium text-stone-800'>
-          Assign Storage Location
-        </h3>
-        <button
-          className='text-stone-500 hover:text-stone-700'
-          onClick={onClose}
-        >
-          <svg
-            xmlns='http://www.w3.org/2000/svg'
-            className='h-5 w-5'
-            fill='none'
-            viewBox='0 0 24 24'
-            stroke='currentColor'
-          >
-            <path
-              strokeLinecap='round'
-              strokeLinejoin='round'
-              strokeWidth={2}
-              d='M6 18L18 6M6 6l12 12'
-            />
-          </svg>
-        </button>
-      </div>
+  // Render material type-specific details
+  const renderMaterialDetails = () => {
+    if (!selectedMaterial) return null;
 
-      <div className='p-6'>
-        {/* Material Info */}
-        <div className='mb-6 flex items-start'>
-          <div className='h-16 w-16 bg-amber-100 rounded-md flex items-center justify-center text-amber-700 mr-4'>
-            <svg
-              xmlns='http://www.w3.org/2000/svg'
-              className='h-8 w-8'
-              fill='none'
-              viewBox='0 0 24 24'
-              stroke='currentColor'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={2}
-                d='M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4'
-              />
-            </svg>
-          </div>
-          <div>
-            <h4 className='font-medium text-stone-800 text-lg'>
-              {material.name}
-            </h4>
-            <p className='text-stone-500'>
-              ID: {material.id} • {material.materialType}
-            </p>
-            {currentStorage && (
-              <p className='text-stone-500 mt-1'>
-                Currently stored at:{' '}
-                {storageLocations.find(
-                  (loc) => loc.id === currentStorage.locationId
-                )?.name || 'Unknown'}{' '}
-                {formatPosition(currentStorage.position)}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Current vs New Location */}
-        <div className='mb-6 bg-stone-50 border border-stone-200 rounded-lg p-4'>
-          <h5 className='font-medium text-stone-700 mb-3'>
-            Storage Assignment
-          </h5>
-
-          {currentStorage ? (
-            <div className='flex items-center justify-center mb-4'>
-              <div className='flex-1 text-center'>
-                <div className='text-sm text-stone-500'>Current Location</div>
-                <div className='font-medium text-stone-700'>
-                  {storageLocations.find(
-                    (loc) => loc.id === currentStorage.locationId
-                  )?.name || 'None'}
-                </div>
-                <div className='text-xs text-stone-500'>
-                  {formatPosition(currentStorage.position)}
-                </div>
-              </div>
-
-              <div className='px-4'>
-                <svg
-                  xmlns='http://www.w3.org/2000/svg'
-                  className='h-6 w-6 text-amber-600'
-                  fill='none'
-                  viewBox='0 0 24 24'
-                  stroke='currentColor'
-                >
-                  <path
-                    strokeLinecap='round'
-                    strokeLinejoin='round'
-                    strokeWidth={2}
-                    d='M14 5l7 7m0 0l-7 7m7-7H3'
-                  />
-                </svg>
-              </div>
-
-              <div className='flex-1 text-center'>
-                <div className='text-sm text-stone-500'>New Location</div>
-                <div className='font-medium text-stone-700'>
-                  {selectedLocation
-                    ? selectedLocation.name
-                    : 'Select a location'}
-                </div>
-                <div className='text-xs text-stone-500'>
-                  {selectedCell
-                    ? formatPosition(selectedCell.position)
-                    : 'Select a cell'}
-                </div>
-              </div>
+    switch (selectedCategory) {
+      case MaterialCategory.HARDWARE:
+        return (
+          <div className="space-y-2 bg-stone-50 p-3 rounded-md">
+            <div className="flex justify-between">
+              <span className="text-sm text-stone-600">Material:</span>
+              <Badge variant="secondary">
+                {formatType(selectedMaterial.subtype as HardwareSubtype)}
+              </Badge>
             </div>
-          ) : (
-            <div className='mb-4 text-center text-stone-600'>
-              This material is not currently assigned to any storage location.
-            </div>
-          )}
-        </div>
-
-        {/* Location Selection */}
-        <div className='mb-6'>
-          <label className='block text-sm font-medium text-stone-700 mb-2'>
-            Select Storage Location
-          </label>
-
-          {availableLocations.length === 0 ? (
-            <div className='text-center py-4 bg-red-50 rounded-md text-red-600'>
-              No storage locations with available space found.
-            </div>
-          ) : (
-            <div className='grid grid-cols-2 gap-2 max-h-40 overflow-y-auto'>
-              {availableLocations.map((location) => (
-                <button
-                  key={location.id}
-                  type='button'
-                  onClick={() => setSelectedLocation(location)}
-                  className={`p-2 border rounded-md text-left ${
-                    selectedLocation?.id === location.id
-                      ? 'border-amber-500 bg-amber-50 text-amber-700'
-                      : 'border-stone-200 hover:bg-stone-50'
-                  }`}
-                >
-                  <div className='text-sm font-medium truncate'>
-                    {location.name}
-                  </div>
-                  <div className='text-xs text-stone-500'>
-                    {location.utilized}/{location.capacity} • {location.type}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Cell Selection */}
-        {selectedLocation && (
-          <div className='mb-6'>
-            <label className='block text-sm font-medium text-stone-700 mb-2'>
-              Select Storage Cell
-            </label>
-
-            {loading ? (
-              <div className='text-center py-4'>
-                <div className='animate-spin rounded-full h-6 w-6 border-b-2 border-amber-600 mx-auto'></div>
-                <p className='mt-2 text-stone-500'>Loading cells...</p>
-              </div>
-            ) : (
-              <>
-                {getAvailableCells().length === 0 ? (
-                  <div className='text-center py-4 bg-red-50 rounded-md text-red-600'>
-                    No available cells in this location.
-                  </div>
-                ) : (
-                  <div className='border border-stone-200 rounded-lg p-4'>
-                    <div
-                      className='grid'
-                      style={{
-                        gridTemplateColumns: `repeat(${selectedLocation.dimensions.width}, minmax(0, 1fr))`,
-                        gridTemplateRows: `repeat(${selectedLocation.dimensions.height}, 40px)`,
-                        gap: '4px',
-                      }}
-                    >
-                      {Array.from({
-                        length:
-                          selectedLocation.dimensions.width *
-                          selectedLocation.dimensions.height,
-                      }).map((_, index) => {
-                        const x = index % selectedLocation.dimensions.width;
-                        const y = Math.floor(
-                          index / selectedLocation.dimensions.width
-                        );
-
-                        // Find cell for this position
-                        const cell = storageCells.find(
-                          (cell) =>
-                            cell.storageId === selectedLocation.id &&
-                            cell.position.x === x &&
-                            cell.position.y === y
-                        );
-
-                        // Skip occupied cells
-                        if (cell && cell.occupied) {
-                          return (
-                            <div
-                              key={`cell-${index}`}
-                              className='bg-stone-200 rounded flex items-center justify-center text-xs text-stone-500'
-                            >
-                              Occupied
-                            </div>
-                          );
-                        }
-
-                        // For empty/available cells
-                        return (
-                          <button
-                            key={`cell-${index}`}
-                            type='button'
-                            onClick={() => cell && handleCellSelect(cell)}
-                            className={`rounded border ${
-                              selectedCell &&
-                              selectedCell.position.x === x &&
-                              selectedCell.position.y === y
-                                ? 'border-amber-500 bg-amber-100 text-amber-800'
-                                : 'border-stone-300 bg-stone-50 hover:bg-stone-100'
-                            } flex items-center justify-center text-xs font-medium`}
-                          >
-                            {x},{y}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {error && (
-          <div className='mb-6 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-600'>
-            {error}
-          </div>
-        )}
-
-        <div className='flex justify-end space-x-3'>
-          <button
-            type='button'
-            onClick={onClose}
-            className='px-4 py-2 border border-stone-300 text-stone-700 rounded-md text-sm font-medium hover:bg-stone-50'
-          >
-            Cancel
-          </button>
-          <button
-            type='button'
-            onClick={handleSubmit}
-            disabled={loading || !selectedLocation || !selectedCell}
-            className='px-4 py-2 bg-amber-600 text-white rounded-md text-sm font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed'
-          >
-            {loading ? (
-              <span className='flex items-center'>
-                <svg
-                  className='animate-spin -ml-1 mr-2 h-4 w-4 text-white'
-                  xmlns='http://www.w3.org/2000/svg'
-                  fill='none'
-                  viewBox='0 0 24 24'
-                >
-                  <circle
-                    className='opacity-25'
-                    cx='12'
-                    cy='12'
-                    r='10'
-                    stroke='currentColor'
-                    strokeWidth='4'
-                  ></circle>
-                  <path
-                    className='opacity-75'
-                    fill='currentColor'
-                    d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
-                  ></path>
-                </svg>
-                Processing...
+            <div className="flex justify-between">
+              <span className="text-sm text-stone-600">Current Quantity:</span>
+              <span className="font-medium">
+                {selectedMaterial.quantity} units
               </span>
-            ) : currentStorage ? (
-              'Move to New Location'
-            ) : (
-              'Assign to Location'
-            )}
-          </button>
-        </div>
+            </div>
+          </div>
+        );
+      case MaterialCategory.LEATHER:
+        return (
+          <div className="space-y-2 bg-stone-50 p-3 rounded-md">
+            <div className="flex justify-between">
+              <span className="text-sm text-stone-600">Type:</span>
+              <Badge variant="secondary">
+                {formatType(selectedMaterial.subtype as LeatherSubtype)}
+              </Badge>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-stone-600">Available Area:</span>
+              <span className="font-medium">
+                {selectedMaterial.quantity} sq ft
+              </span>
+            </div>
+          </div>
+        );
+      case MaterialCategory.SUPPLIES:
+        return (
+          <div className="space-y-2 bg-stone-50 p-3 rounded-md">
+            <div className="flex justify-between">
+              <span className="text-sm text-stone-600">Type:</span>
+              <Badge variant="secondary">
+                {formatType(selectedMaterial.subtype as SuppliesSubtype)}
+              </Badge>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-stone-600">Current Stock:</span>
+              <span className="font-medium">
+                {selectedMaterial.quantity} units
+              </span>
+            </div>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
+  // Typed event handlers
+  const handleQuantityChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setQuantity(e.target.value);
+  };
+
+  const handleNotesChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setNotes(e.target.value);
+  };
+
+  // Custom Tabs component to handle type-safe props
+  const CustomTabs: React.FC<CustomTabsProps> = ({ 
+    value, 
+    onValueChange, 
+    children, 
+    className 
+  }) => (
+    <Tabs 
+      value={value} 
+      onValueChange={(changedValue) => onValueChange(changedValue as MaterialCategory)}
+      className={className}
+    >
+      {children}
+    </Tabs>
+  );
+
+  return (
+    <div className="space-y-6 max-w-xl mx-auto">
+      <h2 className="text-xl font-bold text-stone-800 flex items-center">
+        <Box className="mr-3 text-amber-600" />
+        Material Storage Assignment
+      </h2>
+
+      {/* Category Tabs */}
+      <CustomTabs 
+        value={selectedCategory} 
+        onValueChange={setSelectedCategory}
+        className="w-full"
+      >
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value={MaterialCategory.HARDWARE}>
+            <Layers className="mr-2 h-4 w-4" />
+            Hardware
+          </TabsTrigger>
+          <TabsTrigger value={MaterialCategory.LEATHER}>
+            <Droplet className="mr-2 h-4 w-4" />
+            Leather
+          </TabsTrigger>
+          <TabsTrigger value={MaterialCategory.SUPPLIES}>
+            <Box className="mr-2 h-4 w-4" />
+            Supplies
+          </TabsTrigger>
+        </TabsList>
+      </CustomTabs>
+
+      {/* Material Selection */}
+      <div>
+        <label className="block text-sm font-medium text-stone-600 mb-1">
+          Select {formatType(selectedCategory)} Material
+        </label>
+        <Select 
+          onValueChange={handleMaterialSelect}
+          value={selectedMaterial?.id || ''}
+          disabled={materialsLoading}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder={`Choose a ${selectedCategory} material`} />
+          </SelectTrigger>
+          <SelectContent>
+            {filteredMaterials.map((material) => (
+              <SelectItem 
+                key={material.id} 
+                value={material.id}
+              >
+                {material.name} - {material.quantity} units
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
+
+      {/* Selected Material Details */}
+      {selectedMaterial && renderMaterialDetails()}
+
+      {/* Storage Location Selection */}
+      <div>
+        <label className="block text-sm font-medium text-stone-600 mb-1">
+          Select Storage Location
+        </label>
+        <Select 
+          onValueChange={handleStorageSelect}
+          value={selectedStorage?.id || ''}
+          disabled={storageLoading}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Choose a storage location" />
+          </SelectTrigger>
+          <SelectContent>
+            {storageLocations.map((location) => (
+              <SelectItem 
+                key={location.id} 
+                value={location.id}
+              >
+                {location.name} - {location.type} (Capacity: {location.utilized}/{location.capacity})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Quantity Input */}
+      <div>
+        <label className="block text-sm font-medium text-stone-600 mb-1">
+          Quantity to Store
+        </label>
+        <Input 
+          type="number" 
+          placeholder="Enter quantity" 
+          value={quantity}
+          onChange={handleQuantityChange}
+          min="0"
+          step="0.01"
+          disabled={!selectedMaterial || !selectedStorage}
+        />
+      </div>
+
+      {/* Optional Notes */}
+      <div>
+        <label className="block text-sm font-medium text-stone-600 mb-1">
+          Notes (Optional)
+        </label>
+        <Input 
+          type="text" 
+          placeholder="Add any additional notes" 
+          value={notes}
+          onChange={handleNotesChange}
+          disabled={!selectedMaterial || !selectedStorage}
+        />
+      </div>
+
+      {/* Submit Button */}
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button 
+            className="w-full"
+            disabled={
+              !selectedMaterial || 
+              !selectedStorage || 
+              !quantity || 
+              isSubmitting
+            }
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Assigning...
+              </>
+            ) : (
+              'Assign to Storage'
+            )}
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Storage Assignment</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to assign {quantity} of {selectedMaterial?.name} 
+              to {selectedStorage?.name}?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {notes && (
+            <div className="bg-stone-50 p-3 rounded-md">
+              <p className="text-sm text-stone-600">
+                <strong>Notes:</strong> {notes}
+              </p>
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSubmit}>
+              Confirm Assignment
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

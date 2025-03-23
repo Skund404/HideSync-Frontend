@@ -1,13 +1,13 @@
-import React, { useEffect, useState } from 'react';
+// src/pages/InventoryManagement.tsx
+import React, { useState } from 'react';
 import InventoryFilters from '../components/inventory/InventoryFilters';
 import { InventoryFinancialView } from '../components/inventory/InventoryFinancialView';
 import InventoryGridView from '../components/inventory/InventoryGridView';
 import InventoryListView from '../components/inventory/InventoryListView';
 import InventoryStorageView from '../components/inventory/InventoryStorageView';
-import {
-  getInventorySummary,
-  inventoryProducts,
-} from '../services/mock/inventoryProducts';
+import LoadingSpinner from '@/components/common/LoadingSpinner';
+import ErrorMessage from '@/components/common/ErrorMessage';
+import { useInventory } from '@/context/InventoryContext';
 
 const InventoryManagement: React.FC = () => {
   // State for view mode
@@ -15,92 +15,29 @@ const InventoryManagement: React.FC = () => {
     'grid' | 'list' | 'storage' | 'financial'
   >('grid');
 
-  // State for filtered products
-  const [filteredProducts, setFilteredProducts] = useState(inventoryProducts);
+  // Use the inventory context
+  const { 
+    filteredItems, 
+    loading, 
+    error, 
+    summary, 
+    filters, 
+    setFilters, 
+    refreshInventory 
+  } = useInventory();
 
-  // State for filters
-  const [filters, setFilters] = useState({
-    searchQuery: '',
-    productType: '',
-    status: '',
-    storageLocation: '',
-    dateRange: {
-      from: '',
-      to: '',
-    },
-    priceRange: {
-      min: '',
-      max: '',
-    },
-  });
-
-  // State for inventory summary
-  const [summary, setSummary] = useState(getInventorySummary());
-
-  // Apply filters when they change
-  useEffect(() => {
-    let results = inventoryProducts;
-
-    // Apply search query filter
-    if (filters.searchQuery) {
-      const query = filters.searchQuery.toLowerCase();
-      results = results.filter(
-        (product) =>
-          product.name.toLowerCase().includes(query) ||
-          product.sku.toLowerCase().includes(query) ||
-          product.description.toLowerCase().includes(query)
-      );
-    }
-
-    // Apply product type filter
-    if (filters.productType) {
-      results = results.filter(
-        (product) => product.productType === filters.productType
-      );
-    }
-
-    // Apply status filter
-    if (filters.status) {
-      results = results.filter((product) => product.status === filters.status);
-    }
-
-    // Apply storage location filter
-    if (filters.storageLocation) {
-      results = results.filter((product) =>
-        product.storageLocation.includes(filters.storageLocation)
-      );
-    }
-
-    // Apply date filters if present
-    if (filters.dateRange.from) {
-      results = results.filter(
-        (product) =>
-          new Date(product.dateAdded) >= new Date(filters.dateRange.from)
-      );
-    }
-
-    if (filters.dateRange.to) {
-      results = results.filter(
-        (product) =>
-          new Date(product.dateAdded) <= new Date(filters.dateRange.to)
-      );
-    }
-
-    // Apply price range filters
-    if (filters.priceRange.min) {
-      results = results.filter(
-        (product) => product.sellingPrice >= parseFloat(filters.priceRange.min)
-      );
-    }
-
-    if (filters.priceRange.max) {
-      results = results.filter(
-        (product) => product.sellingPrice <= parseFloat(filters.priceRange.max)
-      );
-    }
-
-    setFilteredProducts(results);
-  }, [filters]);
+  // Render loading state
+  if (loading && !filteredItems.length) {
+    return (
+      <div className="min-h-screen">
+        <LoadingSpinner 
+          size="large" 
+          color="amber" 
+          message="Loading inventory data..." 
+        />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -114,7 +51,7 @@ const InventoryManagement: React.FC = () => {
                   Total Products
                 </h3>
                 <p className='text-2xl font-bold text-stone-800 mt-1'>
-                  {summary.totalProducts}
+                  {summary?.totalProducts || 0}
                 </p>
               </div>
               <div className='bg-blue-100 p-3 rounded-md'>
@@ -143,7 +80,7 @@ const InventoryManagement: React.FC = () => {
                   Needs Reorder
                 </h3>
                 <p className='text-2xl font-bold text-stone-800 mt-1'>
-                  {summary.needsReorder}
+                  {summary?.needsReorder || 0}
                 </p>
               </div>
               <div className='bg-amber-100 p-3 rounded-md'>
@@ -172,7 +109,7 @@ const InventoryManagement: React.FC = () => {
                   Total Value
                 </h3>
                 <p className='text-2xl font-bold text-stone-800 mt-1'>
-                  ${summary.totalValue.toFixed(2)}
+                  ${summary?.totalValue.toFixed(2) || '0.00'}
                 </p>
               </div>
               <div className='bg-green-100 p-3 rounded-md'>
@@ -201,7 +138,7 @@ const InventoryManagement: React.FC = () => {
                   Avg. Profit Margin
                 </h3>
                 <p className='text-2xl font-bold text-stone-800 mt-1'>
-                  {summary.averageMargin.toFixed(1)}%
+                  {summary?.averageMargin.toFixed(1) || '0.0'}%
                 </p>
               </div>
               <div className='bg-purple-100 p-3 rounded-md'>
@@ -225,6 +162,13 @@ const InventoryManagement: React.FC = () => {
         </div>
       </div>
 
+      {/* Display error message if there is one */}
+      {error && (
+        <div className="p-4">
+          <ErrorMessage message={error} onRetry={refreshInventory} />
+        </div>
+      )}
+
       {/* Filters and View Toggle */}
       <InventoryFilters
         filters={filters}
@@ -233,19 +177,25 @@ const InventoryManagement: React.FC = () => {
         setViewMode={setViewMode}
       />
 
-      {/* Content Area */}
+      {/* Content Area with loading indicator for filter changes */}
       <div className='p-6'>
+        {loading && filteredItems.length > 0 && (
+          <div className="mb-4">
+            <LoadingSpinner size="small" color="amber" message="Updating results..." />
+          </div>
+        )}
+        
         {viewMode === 'grid' && (
-          <InventoryGridView products={filteredProducts} />
+          <InventoryGridView products={filteredItems} />
         )}
         {viewMode === 'list' && (
-          <InventoryListView products={filteredProducts} />
+          <InventoryListView products={filteredItems} />
         )}
         {viewMode === 'storage' && (
-          <InventoryStorageView products={filteredProducts} />
+          <InventoryStorageView products={filteredItems} />
         )}
         {viewMode === 'financial' && (
-          <InventoryFinancialView products={filteredProducts} />
+          <InventoryFinancialView products={filteredItems} />
         )}
       </div>
     </div>

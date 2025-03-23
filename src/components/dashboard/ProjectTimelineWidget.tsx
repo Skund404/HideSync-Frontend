@@ -1,52 +1,47 @@
 // src/components/dashboard/ProjectTimelineWidget.tsx
 import React from 'react';
 import { useProjects } from '../../context/ProjectContext';
-import { ProjectStatus } from '../../types/enums';
-import { Project } from '../../types/models';
+import { ProjectStatus } from '../../types/projectTimeline';
+import { matchProjectStatus } from '../../utils/projectTypeUtils';
+import ErrorMessage from '../common/ErrorMessage';
+import LoadingSpinner from '../common/LoadingSpinner';
 import ProjectTimeline from '../projects/ProjectTimeline';
-
-// Create an interface that matches what ProjectTimeline expects
-interface ProjectWithStringId extends Omit<Project, 'id'> {
-  id: string;
-}
 
 const ProjectTimelineWidget: React.FC = () => {
   const { projects, loading, error } = useProjects();
 
   // Find the most recent active project
-  const activeProject = projects.find(
+  // Using our utility for safer enum comparison
+  const currentProject = projects.find(
     (project) =>
-      project.status !== ProjectStatus.COMPLETED &&
-      project.status !== ProjectStatus.CANCELLED
+      !matchProjectStatus(project.status, ProjectStatus.COMPLETED) &&
+      !matchProjectStatus(project.status, ProjectStatus.CANCELLED)
   );
-
-  // Convert the project to have a string ID if found
-  const currentProject: ProjectWithStringId | undefined = activeProject
-    ? {
-        ...activeProject,
-        id: activeProject.id.toString(), // Convert number ID to string
-      }
-    : undefined;
 
   if (loading) {
     return (
       <div className='bg-white rounded-lg shadow-sm border border-stone-200 p-6'>
-        <div className='animate-pulse'>
-          <div className='h-4 bg-stone-200 rounded w-1/3 mb-6'></div>
-          <div className='space-y-4'>
-            <div className='h-10 bg-stone-200 rounded'></div>
-            <div className='h-20 bg-stone-200 rounded'></div>
-          </div>
-        </div>
+        <LoadingSpinner color='amber' message='Loading project timeline...' />
       </div>
     );
   }
 
-  if (error || !currentProject) {
+  if (error) {
     return (
       <div className='bg-white rounded-lg shadow-sm border border-stone-200 p-6'>
-        <div className='text-center text-stone-500'>
-          No active project timeline available
+        <ErrorMessage message={error} />
+      </div>
+    );
+  }
+
+  if (!currentProject) {
+    return (
+      <div className='bg-white rounded-lg shadow-sm border border-stone-200 p-6'>
+        <div className='text-center text-stone-500 py-8'>
+          <p>No active project timeline available</p>
+          <p className='text-sm mt-2'>
+            Start a new project to see timeline details here
+          </p>
         </div>
       </div>
     );

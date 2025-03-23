@@ -4,7 +4,7 @@ import { FileBarChart2, Grid, List } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDocumentation } from '../../../context/DocumentationContext';
-import { ResourceType } from '../../../types/documentationTypes';
+import { DocumentationType } from '../../../types/documentationTypes';
 import WorkflowCard from './WorkflowCard';
 import WorkflowFilter from './WorkflowFilter';
 
@@ -36,7 +36,7 @@ const WorkflowList: React.FC = () => {
     const uniqueCategories = new Set<string>();
 
     resources
-      .filter((resource) => resource.type === ResourceType.WORKFLOW)
+      .filter((resource) => resource.type === DocumentationType.WORKFLOW)
       .forEach((workflow) => {
         uniqueCategories.add(workflow.category);
       });
@@ -50,7 +50,7 @@ const WorkflowList: React.FC = () => {
   // Filter workflows based on current filters
   const filteredWorkflows = useMemo(() => {
     return resources
-      .filter((resource) => resource.type === ResourceType.WORKFLOW)
+      .filter((resource) => resource.type === DocumentationType.WORKFLOW)
       .filter((workflow) => {
         // Apply category filter
         if (filters.category && workflow.category !== filters.category) {
@@ -129,7 +129,7 @@ const WorkflowList: React.FC = () => {
   }
 
   const workflowCount = resources.filter(
-    (resource) => resource.type === ResourceType.WORKFLOW
+    (resource) => resource.type === DocumentationType.WORKFLOW
   ).length;
 
   return (
@@ -139,7 +139,7 @@ const WorkflowList: React.FC = () => {
           <FileBarChart2 size={24} className='mr-2' />
           Workflow Documentation
           <span className='ml-2 text-gray-500 text-base'>
-            ({workflowCount} {workflowCount === 1 ? 'workflow' : 'workflows'})
+            ({workflowCount}) {workflowCount === 1 ? 'workflow' : 'workflows'}
           </span>
         </h2>
 

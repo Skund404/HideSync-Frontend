@@ -1,5 +1,13 @@
 // src/context/ProjectTemplateContext.tsx
 
+import { ApiError } from '@/services/api-client';
+import * as templateService from '@/services/project-template-service';
+import {
+  ProjectFromTemplate,
+  ProjectTemplate,
+  TemplateFilter,
+} from '@/types/projectTemplate';
+import { Project } from '@/types/projectTimeline';
 import React, {
   createContext,
   useCallback,
@@ -7,15 +15,6 @@ import React, {
   useEffect,
   useState,
 } from 'react';
-import { v4 as uuidv4 } from 'uuid';
-import { ProjectStatus, ProjectType, SkillLevel } from '../types/enums';
-import { Project } from '../types/models';
-import {
-  ProjectFromTemplate,
-  ProjectTemplate,
-  TemplateFilter,
-} from '../types/projectTemplate';
-import { useProjects } from './ProjectContext';
 
 interface ProjectTemplateContextType {
   templates: ProjectTemplate[];
@@ -24,7 +23,7 @@ interface ProjectTemplateContextType {
 
   // Template operations
   getTemplateById: (id: string) => ProjectTemplate | undefined;
-  getAllTemplates: () => ProjectTemplate[];
+  getAllTemplates: () => Promise<ProjectTemplate[]>;
   createTemplate: (
     template: Omit<
       ProjectTemplate,
@@ -49,7 +48,7 @@ interface ProjectTemplateContextType {
   ) => Promise<ProjectTemplate>;
 
   // Filtering operations
-  getFilteredTemplates: (filter: TemplateFilter) => ProjectTemplate[];
+  getFilteredTemplates: (filter: TemplateFilter) => Promise<ProjectTemplate[]>;
 }
 
 const ProjectTemplateContext = createContext<
@@ -63,34 +62,20 @@ export const ProjectTemplateProvider: React.FC<{
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { createProject, getProjectById } = useProjects();
-
   // Load initial templates
   useEffect(() => {
-    // In a real app, this would fetch from API
     const loadData = async () => {
       try {
         setLoading(true);
-        // Simulate API fetch with local storage
-        const storedTemplates = localStorage.getItem('projectTemplates');
-        if (storedTemplates) {
-          try {
-            const parsed = JSON.parse(storedTemplates, (key, value) => {
-              // Convert date strings back to Date objects
-              if (key === 'createdAt' || key === 'updatedAt') {
-                return value ? new Date(value) : null;
-              }
-              return value;
-            });
-            setTemplates(parsed);
-          } catch (err) {
-            console.error('Error parsing templates from localStorage:', err);
-            setTemplates([]);
-          }
-        }
-        setLoading(false);
+        // Fetch templates from API
+        const fetchedTemplates = await templateService.getTemplates();
+        setTemplates(fetchedTemplates);
+        setError(null);
       } catch (err) {
-        setError('Failed to load templates');
+        const apiError = err as ApiError;
+        setError(apiError.message || 'Failed to load templates');
+        console.error('Error loading templates:', err);
+      } finally {
         setLoading(false);
       }
     };
@@ -98,18 +83,7 @@ export const ProjectTemplateProvider: React.FC<{
     loadData();
   }, []);
 
-  // Save templates to storage when changed
-  useEffect(() => {
-    if (templates.length > 0) {
-      try {
-        localStorage.setItem('projectTemplates', JSON.stringify(templates));
-      } catch (err) {
-        console.error('Error storing templates to localStorage:', err);
-      }
-    }
-  }, [templates]);
-
-  // Template CRUD operations
+  // Get template by ID
   const getTemplateById = useCallback(
     (id: string) => {
       return templates.find((template) => template.id === id);
@@ -117,10 +91,26 @@ export const ProjectTemplateProvider: React.FC<{
     [templates]
   );
 
-  const getAllTemplates = useCallback(() => {
-    return templates;
-  }, [templates]);
+  // Get all templates
+  const getAllTemplates = useCallback(async (): Promise<ProjectTemplate[]> => {
+    try {
+      setLoading(true);
+      const fetchedTemplates = await templateService.getTemplates();
 
+      // Update local state
+      setTemplates(fetchedTemplates);
+
+      return fetchedTemplates;
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to fetch templates');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Create a new template
   const createTemplate = async (
     templateData: Omit<
       ProjectTemplate,
@@ -129,233 +119,102 @@ export const ProjectTemplateProvider: React.FC<{
   ): Promise<ProjectTemplate> => {
     try {
       setLoading(true);
+      const newTemplate = await templateService.createTemplate(templateData);
 
-      const newTemplate: ProjectTemplate = {
-        ...templateData,
-        id: uuidv4(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        version: '1.0',
-        // Set defaults for any missing fields
-        materials: templateData.materials || [],
-        tags: templateData.tags || [],
-        isPublic: templateData.isPublic ?? false,
-      };
-
+      // Update local state
       setTemplates((prev) => [...prev, newTemplate]);
-      setLoading(false);
+
       return newTemplate;
     } catch (err) {
-      setError('Failed to create template');
-      setLoading(false);
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to create template');
       throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Update an existing template
   const updateTemplate = async (
     id: string,
     updates: Partial<ProjectTemplate>
   ): Promise<ProjectTemplate> => {
     try {
       setLoading(true);
+      const updatedTemplate = await templateService.updateTemplate(id, updates);
 
-      const existingTemplate = getTemplateById(id);
-      if (!existingTemplate) {
-        throw new Error('Template not found');
-      }
-
-      // Create new version if significant changes
-      const needsVersionBump =
-        updates.components !== undefined ||
-        updates.materials !== undefined ||
-        updates.type !== undefined;
-
-      const versionParts = existingTemplate.version.split('.');
-      const newVersion = needsVersionBump
-        ? `${versionParts[0]}.${parseInt(versionParts[1]) + 1}`
-        : existingTemplate.version;
-
-      const updatedTemplate: ProjectTemplate = {
-        ...existingTemplate,
-        ...updates,
-        updatedAt: new Date(),
-        version: newVersion,
-      };
-
+      // Update local state
       setTemplates((prev) =>
         prev.map((template) =>
           template.id === id ? updatedTemplate : template
         )
       );
 
-      setLoading(false);
       return updatedTemplate;
     } catch (err) {
-      setError('Failed to update template');
-      setLoading(false);
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to update template');
       throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Delete a template
   const deleteTemplate = async (id: string): Promise<void> => {
     try {
       setLoading(true);
+      await templateService.deleteTemplate(id);
 
+      // Update local state
       setTemplates((prev) => prev.filter((template) => template.id !== id));
-
-      setLoading(false);
     } catch (err) {
-      setError('Failed to delete template');
-      setLoading(false);
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to delete template');
       throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Template filtering operations - memoized with useCallback to prevent unnecessary re-renders
+  // Get filtered templates
   const getFilteredTemplates = useCallback(
-    (filter: TemplateFilter): ProjectTemplate[] => {
-      // Return all templates if no filter is specified
-      if (
-        !filter ||
-        (!filter.searchText &&
-          !filter.projectType &&
-          !filter.skillLevel &&
-          (!filter.tags || filter.tags.length === 0) &&
-          filter.isPublic === undefined)
-      ) {
-        return templates;
+    async (filter: TemplateFilter): Promise<ProjectTemplate[]> => {
+      try {
+        setLoading(true);
+        const filteredTemplates = await templateService.getFilteredTemplates(
+          filter
+        );
+        return filteredTemplates;
+      } catch (err) {
+        const apiError = err as ApiError;
+        setError(apiError.message || 'Failed to filter templates');
+        throw err;
+      } finally {
+        setLoading(false);
       }
-
-      return templates.filter((template) => {
-        // Filter by search text
-        if (
-          filter.searchText &&
-          !template.name
-            .toLowerCase()
-            .includes(filter.searchText.toLowerCase()) &&
-          !template.description
-            ?.toLowerCase()
-            .includes(filter.searchText.toLowerCase())
-        ) {
-          return false;
-        }
-
-        // Filter by project type
-        if (filter.projectType && template.type !== filter.projectType) {
-          return false;
-        }
-
-        // Filter by skill level
-        if (filter.skillLevel && template.skillLevel !== filter.skillLevel) {
-          return false;
-        }
-
-        // Filter by public status
-        if (
-          filter.isPublic !== undefined &&
-          template.isPublic !== filter.isPublic
-        ) {
-          return false;
-        }
-
-        // Filter by tags
-        if (filter.tags && filter.tags.length > 0) {
-          // Check if template has ALL the selected tags
-          const hasAllTags = filter.tags.every((tag) =>
-            template.tags.includes(tag)
-          );
-          if (!hasAllTags) return false;
-        }
-
-        return true;
-      });
     },
-    [templates]
+    []
   );
 
-  // UPDATED: Project-Template operations with proper type handling
+  // Create project from template
   const createProjectFromTemplate = async (
     data: ProjectFromTemplate
   ): Promise<Project> => {
     try {
       setLoading(true);
-
-      const template = getTemplateById(data.templateId);
-      if (!template) {
-        throw new Error('Template not found');
-      }
-
-      // Apply customizations to components
-      let components = [...template.components];
-      if (data.customizations?.components) {
-        const { add, remove, modify } = data.customizations.components;
-
-        // Remove components
-        if (remove && remove.length > 0) {
-          components = components.filter((comp) => !remove.includes(comp.id));
-        }
-
-        // Modify components
-        if (modify && modify.length > 0) {
-          modify.forEach((modification) => {
-            const index = components.findIndex(
-              (comp) => comp.id === modification.id
-            );
-            if (index !== -1) {
-              components[index] = { ...components[index], ...modification };
-            }
-          });
-        }
-
-        // Add components
-        if (add && add.length > 0) {
-          components = [...components, ...add];
-        }
-      }
-
-      // Calculate the due date based on estimated duration if not provided
-      const dueDateObj =
-        data.deadline ||
-        (() => {
-          const date = new Date();
-          date.setDate(date.getDate() + template.estimatedDuration);
-          return date;
-        })();
-
-      // Convert dates to string format as required by Project model
-      const startDateStr = new Date().toISOString().split('T')[0];
-      const dueDateStr = dueDateObj.toISOString().split('T')[0];
-
-      // Create client/customer string from clientId
-      const customerName = data.clientId
-        ? `Client #${data.clientId}` // In a real app, you'd fetch the client name
-        : 'No Client Assigned';
-
-      // Create a project object using ProjectContext's expected format
-      const newProject = {
-        name: data.projectName,
-        description: template.description || '',
-        status: ProjectStatus.CONCEPT,
-        startDate: startDateStr,
-        dueDate: dueDateStr,
-        customer: customerName,
-        type: mapToProjectType(template.type),
-        completionPercentage: 0, // Initialize with 0% completion
-        notes: data.customizations?.notes || template.notes || '',
-      };
-
-      // Create the project using the createProject function
-      const project = await createProject(newProject);
-      setLoading(false);
+      const project = await templateService.createProjectFromTemplate(data);
       return project;
     } catch (err) {
-      setError('Failed to create project from template');
-      setLoading(false);
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to create project from template');
       throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
-  // UPDATED: Save project as template with proper ID conversion
+  // Save project as template
   const saveProjectAsTemplate = async (
     projectId: string,
     templateName: string,
@@ -366,92 +225,23 @@ export const ProjectTemplateProvider: React.FC<{
   ): Promise<ProjectTemplate> => {
     try {
       setLoading(true);
+      const newTemplate = await templateService.saveProjectAsTemplate(
+        projectId,
+        templateName,
+        options
+      );
 
-      // Convert string projectId to number
-      const numericProjectId = parseInt(projectId, 10);
-      if (isNaN(numericProjectId)) {
-        throw new Error('Invalid project ID');
-      }
+      // Update local state
+      setTemplates((prev) => [...prev, newTemplate]);
 
-      const project = getProjectById(numericProjectId);
-      if (!project) {
-        throw new Error('Project not found');
-      }
-
-      // Process tags if provided
-      const tagsList = options?.tags || [];
-
-      // Calculate duration from project dates if available
-      const estimatedDuration = calculateDurationFromProject(project);
-
-      // Convert project to template format
-      const newTemplate: Omit<
-        ProjectTemplate,
-        'id' | 'createdAt' | 'updatedAt' | 'version'
-      > = {
-        name: templateName,
-        description: project.description || '',
-        // Ensure these are proper enum values by converting strings to enum values or using defaults
-        type: mapToProjectType(project.type),
-        skillLevel: SkillLevel.INTERMEDIATE, // Default value if not available
-        estimatedDuration,
-        components: [], // Adapt this to match your actual component structure
-        materials: [], // Adapt this to match your actual material structure
-        estimatedCost: 0, // Would be calculated from materials
-        isPublic: options?.isPublic || false,
-        tags: tagsList,
-        notes: project.notes || '',
-      };
-
-      const template = await createTemplate(newTemplate);
-      setLoading(false);
-      return template;
+      return newTemplate;
     } catch (err) {
-      setError('Failed to save project as template');
-      setLoading(false);
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to save project as template');
       throw err;
+    } finally {
+      setLoading(false);
     }
-  };
-
-  // Helper function to calculate estimated duration from project
-  const calculateDurationFromProject = (project: any): number => {
-    // Default to 14 days if dates aren't available
-    if (!project.startDate || !project.dueDate) return 14;
-
-    try {
-      const start = new Date(project.startDate);
-      const end = new Date(project.dueDate);
-
-      // Calculate days difference
-      const diffTime = Math.abs(end.getTime() - start.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      return diffDays > 0 ? diffDays : 14; // Ensure at least 1 day
-    } catch (err) {
-      console.error('Error calculating duration:', err);
-      return 14; // Default to 14 days on error
-    }
-  };
-
-  // Helper to map string type to ProjectType enum
-  const mapToProjectType = (typeValue: string | ProjectType): ProjectType => {
-    // If it's already a ProjectType enum value, return it
-    if (
-      typeof typeValue === 'object' ||
-      Object.values(ProjectType).includes(typeValue as ProjectType)
-    ) {
-      return typeValue as ProjectType;
-    }
-
-    // Try to match the string to a ProjectType enum value
-    const matchedType = Object.entries(ProjectType).find(
-      ([key, value]) =>
-        value.toLowerCase() === typeValue.toLowerCase() ||
-        key.toLowerCase() === typeValue.toLowerCase()
-    );
-
-    // Return the matched type or default to WALLET
-    return matchedType ? (matchedType[1] as ProjectType) : ProjectType.WALLET;
   };
 
   const value = {

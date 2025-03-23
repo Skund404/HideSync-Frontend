@@ -1,3 +1,4 @@
+// src/components/financial/pricing/PricingCalculator.tsx
 import { Calculator, Clock, DollarSign, Percent } from 'lucide-react';
 import React, { useState } from 'react';
 import { useFinancial } from '../../../context/FinancialContext';
@@ -5,20 +6,31 @@ import {
   formatCurrency,
   formatPercentage,
 } from '../../../utils/financialHelpers';
+import LoadingSpinner from '../../common/LoadingSpinner';
+import ErrorMessage from '../../common/ErrorMessage';
 
 const PricingCalculator: React.FC = () => {
   const {
     calculatorInputs,
     calculatorResults,
+    calculatorLoading,
     updateCalculatorInputs,
+    recalculatePricing,
     productMetrics,
+    error,
   } = useFinancial();
 
   const [showAdvanced, setShowAdvanced] = useState(false);
-
+  
+  // Handle input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     updateCalculatorInputs({ [name]: parseFloat(value) || 0 });
+  };
+
+  // Trigger a manual recalculation
+  const handleRecalculate = () => {
+    recalculatePricing();
   };
 
   // Profit margin color based on target
@@ -36,6 +48,16 @@ const PricingCalculator: React.FC = () => {
     .slice()
     .sort((a, b) => b.margin - a.margin)
     .slice(0, 3);
+
+  // Show error if there was an API error
+  if (error) {
+    return (
+      <ErrorMessage 
+        message="There was a problem loading the pricing calculator. Some calculations may use local estimations."
+        onRetry={recalculatePricing}
+      />
+    );
+  }
 
   return (
     <div className='space-y-6'>
@@ -204,12 +226,29 @@ const PricingCalculator: React.FC = () => {
             </div>
           )}
 
-          <button
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className='text-sm text-amber-600 hover:text-amber-700 font-medium mt-2'
-          >
-            {showAdvanced ? 'Hide Advanced Options' : 'Show Advanced Options'}
-          </button>
+          <div className='flex justify-between'>
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className='text-sm text-amber-600 hover:text-amber-700 font-medium mt-2'
+            >
+              {showAdvanced ? 'Hide Advanced Options' : 'Show Advanced Options'}
+            </button>
+            
+            <button
+              onClick={handleRecalculate}
+              disabled={calculatorLoading}
+              className='flex items-center text-sm bg-amber-100 hover:bg-amber-200 text-amber-800 px-3 py-1 rounded mt-2 disabled:opacity-50 disabled:cursor-not-allowed'
+            >
+              {calculatorLoading ? (
+                <>
+                  <div className='animate-spin h-3 w-3 border-2 border-amber-800 border-t-transparent rounded-full mr-1'></div>
+                  Calculating...
+                </>
+              ) : (
+                <>Recalculate</>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Results Column */}
@@ -219,104 +258,120 @@ const PricingCalculator: React.FC = () => {
             Pricing Results
           </h4>
 
-          <div className='bg-amber-50 p-6 rounded-lg border border-amber-100'>
-            <div className='mb-4'>
-              <div className='text-2xl font-bold text-amber-800'>
-                Suggested Price:{' '}
-                {formatCurrency(parseFloat(calculatorResults.suggestedPrice))}
+          {calculatorLoading ? (
+            <div className='flex items-center justify-center h-40'>
+              <LoadingSpinner 
+                size="small" 
+                color="amber" 
+                message="Calculating pricing..." 
+              />
+            </div>
+          ) : (
+            <div className='bg-amber-50 p-6 rounded-lg border border-amber-100'>
+              <div className='mb-4'>
+                <div className='text-2xl font-bold text-amber-800'>
+                  Suggested Price:{' '}
+                  {formatCurrency(parseFloat(calculatorResults.suggestedPrice))}
+                </div>
+                <div className={`text-sm font-medium mt-1 ${getMarginColor()}`}>
+                  Profit Margin: {calculatorResults.actualMargin}%
+                  {parseFloat(calculatorResults.actualMargin) <
+                    calculatorInputs.targetMargin && (
+                    <span className='text-xs ml-2 text-amber-700'>
+                      (Target: {calculatorInputs.targetMargin}%)
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className={`text-sm font-medium mt-1 ${getMarginColor()}`}>
-                Profit Margin: {calculatorResults.actualMargin}%
-                {parseFloat(calculatorResults.actualMargin) <
-                  calculatorInputs.targetMargin && (
-                  <span className='text-xs ml-2 text-amber-700'>
-                    (Target: {calculatorInputs.targetMargin}%)
-                  </span>
+
+              <div className='grid grid-cols-2 gap-x-4 gap-y-3'>
+                <div className='text-sm text-stone-600'>
+                  Materials & Hardware:
+                </div>
+                <div className='text-sm text-stone-800 font-medium text-right'>
+                  {formatCurrency(
+                    parseFloat(calculatorInputs.materialCost.toString()) +
+                      parseFloat(calculatorInputs.hardwareCost.toString())
+                  )}
+                </div>
+
+                <div className='text-sm text-stone-600'>Labor Cost:</div>
+                <div className='text-sm text-stone-800 font-medium text-right'>
+                  {formatCurrency(
+                    parseFloat(calculatorInputs.laborHours.toString()) *
+                      parseFloat(calculatorInputs.laborRate.toString())
+                  )}
+                </div>
+
+                <div className='text-sm text-stone-600'>Overhead:</div>
+                <div className='text-sm text-stone-800 font-medium text-right'>
+                  {formatCurrency(parseFloat(calculatorResults.overheadAmount))}
+                </div>
+
+                {showAdvanced && (calculatorInputs.shippingCost ?? 0) > 0 && (
+                  <>
+                    <div className='text-sm text-stone-600'>Shipping:</div>
+                    <div className='text-sm text-stone-800 font-medium text-right'>
+                      {formatCurrency(
+                        parseFloat(
+                          (calculatorInputs.shippingCost ?? 0).toString()
+                        )
+                      )}
+                    </div>
+                  </>
                 )}
+
+                {showAdvanced && (calculatorInputs.packagingCost ?? 0) > 0 && (
+                  <>
+                    <div className='text-sm text-stone-600'>Packaging:</div>
+                    <div className='text-sm text-stone-800 font-medium text-right'>
+                      {formatCurrency(
+                        parseFloat(
+                          (calculatorInputs.packagingCost ?? 0).toString()
+                        )
+                      )}
+                    </div>
+                  </>
+                )}
+
+                <div className='text-sm text-stone-600 font-medium pt-2 border-t border-amber-200'>
+                  Total Cost:
+                </div>
+                <div className='text-sm text-stone-800 font-medium text-right pt-2 border-t border-amber-200'>
+                  {formatCurrency(parseFloat(calculatorResults.totalCost))}
+                </div>
+
+                <div className='text-sm text-stone-600'>Profit:</div>
+                <div className='text-sm text-green-600 font-medium text-right'>
+                  {formatCurrency(parseFloat(calculatorResults.profit))}
+                </div>
               </div>
             </div>
-
-            <div className='grid grid-cols-2 gap-x-4 gap-y-3'>
-              <div className='text-sm text-stone-600'>
-                Materials & Hardware:
-              </div>
-              <div className='text-sm text-stone-800 font-medium text-right'>
-                {formatCurrency(
-                  parseFloat(calculatorInputs.materialCost.toString()) +
-                    parseFloat(calculatorInputs.hardwareCost.toString())
-                )}
-              </div>
-
-              <div className='text-sm text-stone-600'>Labor Cost:</div>
-              <div className='text-sm text-stone-800 font-medium text-right'>
-                {formatCurrency(
-                  parseFloat(calculatorInputs.laborHours.toString()) *
-                    parseFloat(calculatorInputs.laborRate.toString())
-                )}
-              </div>
-
-              <div className='text-sm text-stone-600'>Overhead:</div>
-              <div className='text-sm text-stone-800 font-medium text-right'>
-                {formatCurrency(parseFloat(calculatorResults.overheadAmount))}
-              </div>
-
-              {showAdvanced && (calculatorInputs.shippingCost ?? 0) > 0 && (
-                <>
-                  <div className='text-sm text-stone-600'>Shipping:</div>
-                  <div className='text-sm text-stone-800 font-medium text-right'>
-                    {formatCurrency(
-                      parseFloat(
-                        (calculatorInputs.shippingCost ?? 0).toString()
-                      )
-                    )}
-                  </div>
-                </>
-              )}
-
-              {showAdvanced && (calculatorInputs.packagingCost ?? 0) > 0 && (
-                <>
-                  <div className='text-sm text-stone-600'>Packaging:</div>
-                  <div className='text-sm text-stone-800 font-medium text-right'>
-                    {formatCurrency(
-                      parseFloat(
-                        (calculatorInputs.packagingCost ?? 0).toString()
-                      )
-                    )}
-                  </div>
-                </>
-              )}
-
-              <div className='text-sm text-stone-600 font-medium pt-2 border-t border-amber-200'>
-                Total Cost:
-              </div>
-              <div className='text-sm text-stone-800 font-medium text-right pt-2 border-t border-amber-200'>
-                {formatCurrency(parseFloat(calculatorResults.totalCost))}
-              </div>
-
-              <div className='text-sm text-stone-600'>Profit:</div>
-              <div className='text-sm text-green-600 font-medium text-right'>
-                {formatCurrency(parseFloat(calculatorResults.profit))}
-              </div>
-            </div>
-          </div>
+          )}
 
           <div className='bg-white p-4 rounded-lg border border-stone-200'>
             <h5 className='font-medium text-stone-700 mb-3'>
               Market Comparison
             </h5>
-            <div className='space-y-2'>
-              {topMarginProducts.map((product, idx) => (
-                <div
-                  key={`top-product-${idx}`}
-                  className='flex justify-between items-center p-2 rounded bg-stone-50'
-                >
-                  <span className='text-sm'>{product.name}</span>
-                  <span className='text-sm font-medium'>
-                    {formatPercentage(product.margin)}
-                  </span>
-                </div>
-              ))}
-            </div>
+            {topMarginProducts.length > 0 ? (
+              <div className='space-y-2'>
+                {topMarginProducts.map((product, idx) => (
+                  <div
+                    key={`top-product-${idx}`}
+                    className='flex justify-between items-center p-2 rounded bg-stone-50'
+                  >
+                    <span className='text-sm'>{product.name}</span>
+                    <span className='text-sm font-medium'>
+                      {formatPercentage(product.margin)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className='text-sm text-stone-500 text-center py-2'>
+                No product data available for comparison
+              </p>
+            )}
             <p className='text-xs text-stone-500 mt-3'>
               Your calculated margin of {calculatorResults.actualMargin}%
               compared to top products

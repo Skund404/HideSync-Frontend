@@ -8,9 +8,14 @@ import { Pattern, PatternFileType } from '../../../types/patternTypes';
 interface PatternCardProps {
   pattern: Pattern;
   onClick?: (pattern: Pattern) => void;
+  isLoading?: boolean;
 }
 
-const PatternCard: React.FC<PatternCardProps> = ({ pattern, onClick }) => {
+const PatternCard: React.FC<PatternCardProps> = ({ 
+  pattern, 
+  onClick, 
+  isLoading = false 
+}) => {
   const { toggleFavorite } = usePatternContext();
   const navigate = useNavigate();
 
@@ -115,9 +120,14 @@ const PatternCard: React.FC<PatternCardProps> = ({ pattern, onClick }) => {
     }
   };
 
-  const handleFavoriteClick = (e: React.MouseEvent) => {
+  const handleFavoriteClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    toggleFavorite(pattern.id);
+    try {
+      await toggleFavorite(pattern.id);
+    } catch (err) {
+      console.error(`Error toggling favorite for pattern ${pattern.id}:`, err);
+      // Could add toast notification for error
+    }
   };
 
   const handleCardClick = () => {
@@ -128,12 +138,6 @@ const PatternCard: React.FC<PatternCardProps> = ({ pattern, onClick }) => {
     }
   };
 
-  const handleAddToProject = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    // Navigate to the create from template page with this pattern's ID
-    navigate(`/projects/new/from-template/${pattern.id}`);
-  };
-
   const formatDate = (date: Date) => {
     return new Date(date).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -141,10 +145,14 @@ const PatternCard: React.FC<PatternCardProps> = ({ pattern, onClick }) => {
       day: 'numeric',
     });
   };
+  
+  // Apply a loading effect to the card if isLoading is true
+  const cardClasses = `bg-white rounded-lg shadow-sm overflow-hidden border border-stone-200 
+    hover:shadow-md transition-shadow cursor-pointer ${isLoading ? 'opacity-70' : ''}`;
 
   return (
     <div
-      className='bg-white rounded-lg shadow-sm overflow-hidden border border-stone-200 hover:shadow-md transition-shadow cursor-pointer'
+      className={cardClasses}
       onClick={handleCardClick}
     >
       <div className='relative h-40 bg-stone-200'>
@@ -172,6 +180,7 @@ const PatternCard: React.FC<PatternCardProps> = ({ pattern, onClick }) => {
                   ? 'Remove from favorites'
                   : 'Add to favorites'
               }
+              disabled={isLoading}
             >
               <svg
                 xmlns='http://www.w3.org/2000/svg'
@@ -242,39 +251,16 @@ const PatternCard: React.FC<PatternCardProps> = ({ pattern, onClick }) => {
           )}
         </div>
         <div className='border-t border-stone-100 pt-3 flex justify-between'>
-          {/* View Details button */}
+          {/* Single View Details button */}
           <button
             className='text-sm text-amber-600 hover:text-amber-800 font-medium'
             onClick={(e) => {
               e.stopPropagation();
               navigate(`/patterns/${pattern.id}`);
             }}
+            disabled={isLoading}
           >
             View Details
-          </button>
-
-          {/* Add to Project button */}
-          <button
-            className='text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center'
-            onClick={handleAddToProject}
-            title='Create a new project using this pattern'
-            aria-label='Create a new project from this pattern'
-          >
-            <svg
-              xmlns='http://www.w3.org/2000/svg'
-              className='h-4 w-4 mr-1'
-              fill='none'
-              viewBox='0 0 24 24'
-              stroke='currentColor'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={2}
-                d='M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'
-              />
-            </svg>
-            Add to Project
           </button>
         </div>
       </div>

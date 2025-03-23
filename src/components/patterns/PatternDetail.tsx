@@ -1,10 +1,22 @@
 // src/components/patterns/PatternDetail.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useComponentContext } from '../../context/ComponentContext';
 import { usePatternContext } from '../../context/PatternContext';
+import {
+  Annotation,
+  createAnnotation,
+  deleteAnnotation,
+  getAnnotationsByPatternId,
+  updateAnnotation,
+} from '../../services/annotation-service';
+import { handleApiError } from '../../services/error-handler';
+import { showError, showSuccess } from '../../services/notification-service';
 import { Component, Pattern, PatternFileType } from '../../types/patternTypes';
+import ErrorBoundary from '../common/ErrorBoundary';
+import ErrorMessage from '../common/ErrorMessage';
 import LoadingSpinner from '../common/LoadingSpinner';
+import AnnotationToolbar from './annotation/AnnotationToolbar';
 import ComponentDetail from './components/ComponentDetail';
 import ComponentForm from './components/ComponentForm';
 import ComponentList from './components/ComponentList';
@@ -32,8 +44,17 @@ const PatternDetail: React.FC<PatternDetailProps> = ({
   const patternId =
     propPatternId || (paramId ? parseInt(paramId, 10) : undefined);
 
-  const { getPatternById, toggleFavorite } = usePatternContext();
-  const { getComponentsByPatternId } = useComponentContext();
+  const {
+    getPatternById,
+    toggleFavorite,
+    loading: patternLoading,
+    error: patternError,
+  } = usePatternContext();
+  const {
+    getComponentsByPatternId,
+    loading: componentLoading,
+    error: componentError,
+  } = useComponentContext();
 
   const [pattern, setPattern] = useState<Pattern | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -50,46 +71,81 @@ const PatternDetail: React.FC<PatternDetailProps> = ({
   const [isAddingComponent, setIsAddingComponent] = useState(false);
   const [isEditingComponent, setIsEditingComponent] = useState(false);
 
+  // Annotation-related state
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [activeAnnotationId, setActiveAnnotationId] = useState<
+    string | undefined
+  >(undefined);
+  const [activeToolType, setActiveToolType] = useState<
+    'text' | 'arrow' | 'measurement' | 'highlight' | null
+  >(null);
+  const [showAnnotations, setShowAnnotations] = useState(true);
+  const [isLoadingAnnotations, setIsLoadingAnnotations] = useState(false);
+  const [annotationError, setAnnotationError] = useState<string | null>(null);
+
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const fetchPattern = async () => {
-      if (!patternId) {
-        setError('No pattern ID provided');
+  // Load pattern and components
+  const loadData = useCallback(async () => {
+    if (!patternId) {
+      setError('No pattern ID provided');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Fetch pattern data
+      const fetchedPattern = await getPatternById(patternId);
+
+      if (!fetchedPattern) {
+        setError(`Pattern with ID ${patternId} not found`);
         setLoading(false);
         return;
       }
 
-      try {
-        setLoading(true);
-        const fetchedPattern = await getPatternById(patternId);
+      setPattern(fetchedPattern);
 
-        if (!fetchedPattern) {
-          setError(`Pattern with ID ${patternId} not found`);
-        } else {
-          setPattern(fetchedPattern);
+      // Fetch components for this pattern
+      if (fetchedPattern.id) {
+        const components = await getComponentsByPatternId(fetchedPattern.id);
+        setPatternComponents(components);
 
-          // Load components for this pattern
-          if (fetchedPattern.id) {
-            const components = getComponentsByPatternId(fetchedPattern.id);
-            setPatternComponents(components);
-          }
-
-          setError(null);
+        // Fetch annotations for this pattern
+        try {
+          setIsLoadingAnnotations(true);
+          const patternAnnotations = await getAnnotationsByPatternId(
+            fetchedPattern.id
+          );
+          setAnnotations(patternAnnotations);
+        } catch (err) {
+          const annotErrMsg = handleApiError(
+            err,
+            'Failed to fetch annotations'
+          );
+          setAnnotationError(annotErrMsg);
+          // Don't fail the entire pattern load if annotations fail
+          console.error(annotErrMsg);
+        } finally {
+          setIsLoadingAnnotations(false);
         }
-      } catch (err) {
-        setError(
-          `Error loading pattern: ${
-            err instanceof Error ? err.message : String(err)
-          }`
-        );
-      } finally {
-        setLoading(false);
       }
-    };
-
-    fetchPattern();
+    } catch (err) {
+      setError(
+        `Error loading pattern data: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    } finally {
+      setLoading(false);
+    }
   }, [patternId, getPatternById, getComponentsByPatternId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleBack = () => {
     if (onClose) {
@@ -97,6 +153,10 @@ const PatternDetail: React.FC<PatternDetailProps> = ({
     } else {
       navigate('/patterns');
     }
+  };
+
+  const handleRetry = () => {
+    loadData();
   };
 
   const handleToggleFavorite = async () => {
@@ -107,9 +167,112 @@ const PatternDetail: React.FC<PatternDetailProps> = ({
       setPattern(updatedPattern);
     } catch (err) {
       console.error('Error toggling favorite:', err);
+      showError(
+        `Failed to toggle favorite status: ${handleApiError(
+          err,
+          'Unknown error'
+        )}`
+      );
     }
   };
 
+  // Annotation handlers
+  const handleAnnotationCreated = async (
+    newAnnotation: Omit<Annotation, 'id' | 'createdAt' | 'modifiedAt'>
+  ) => {
+    if (!pattern) return;
+
+    try {
+      // Create annotation with API
+      const createdAnnotation = await createAnnotation({
+        ...newAnnotation,
+        patternId: pattern.id,
+      });
+
+      // Add to local state
+      setAnnotations((prev) => [...prev, createdAnnotation]);
+      setActiveAnnotationId(createdAnnotation.id);
+
+      showSuccess('Annotation created');
+    } catch (error) {
+      const errorMessage = handleApiError(error, 'Failed to create annotation');
+      showError(errorMessage);
+    }
+  };
+
+  const handleAnnotationUpdated = async (
+    id: string,
+    changes: Partial<Annotation>
+  ) => {
+    try {
+      // Update annotation with API
+      await updateAnnotation(id, changes);
+
+      // Update local state
+      setAnnotations((prev) =>
+        prev.map((ann) => (ann.id === id ? { ...ann, ...changes } : ann))
+      );
+
+      showSuccess('Annotation updated');
+    } catch (error) {
+      const errorMessage = handleApiError(error, 'Failed to update annotation');
+      showError(errorMessage);
+    }
+  };
+
+  const handleAnnotationDeleted = async (id: string) => {
+    try {
+      // Delete annotation with API
+      await deleteAnnotation(id);
+
+      // Update local state
+      setAnnotations((prev) => prev.filter((ann) => ann.id !== id));
+
+      // Clear active annotation if it was deleted
+      if (activeAnnotationId === id) {
+        setActiveAnnotationId(undefined);
+      }
+
+      showSuccess('Annotation deleted');
+    } catch (error) {
+      const errorMessage = handleApiError(error, 'Failed to delete annotation');
+      showError(errorMessage);
+    }
+  };
+
+  const handleClearAllAnnotations = async () => {
+    if (!pattern) return;
+
+    if (annotations.length === 0) return;
+
+    if (
+      !window.confirm(
+        `Are you sure you want to delete all ${annotations.length} annotations?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      // Delete all annotations with API
+      await Promise.all(annotations.map((ann) => deleteAnnotation(ann.id)));
+
+      // Clear local state
+      setAnnotations([]);
+      setActiveAnnotationId(undefined);
+
+      showSuccess('All annotations cleared');
+    } catch (error) {
+      const errorMessage = handleApiError(error, 'Failed to clear annotations');
+      showError(errorMessage);
+    }
+  };
+
+  const handleToggleAnnotationsVisibility = () => {
+    setShowAnnotations((prev) => !prev);
+  };
+
+  // Component handlers
   const handleSelectComponent = (component: Component) => {
     setSelectedComponent(component);
     setIsAddingComponent(false);
@@ -132,11 +295,21 @@ const PatternDetail: React.FC<PatternDetailProps> = ({
     setSelectedComponent(null);
   };
 
-  const handleSaveComponent = () => {
+  const handleSaveComponent = async () => {
     // After saving, refresh component list
     if (pattern?.id) {
-      const updatedComponents = getComponentsByPatternId(pattern.id);
-      setPatternComponents(updatedComponents);
+      try {
+        const updatedComponents = await getComponentsByPatternId(pattern.id);
+        setPatternComponents(updatedComponents);
+      } catch (err) {
+        console.error('Error refreshing components:', err);
+        showError(
+          `Failed to refresh components: ${handleApiError(
+            err,
+            'Unknown error'
+          )}`
+        );
+      }
     }
 
     setIsAddingComponent(false);
@@ -144,16 +317,90 @@ const PatternDetail: React.FC<PatternDetailProps> = ({
     setSelectedComponent(null);
   };
 
+  // Custom wrappers for setActiveAnnotationId to handle string | undefined vs string | null
+  const handleSetActiveAnnotationId = (id?: string) => {
+    setActiveAnnotationId(id);
+  };
+
+  // Display loading indicator when annotations are loading
+  const renderAnnotationLoadingStatus = () => {
+    if (isLoadingAnnotations) {
+      return (
+        <div className='bg-amber-50 border-l-4 border-amber-400 p-2 text-xs'>
+          <div className='flex items-center'>
+            <span className='ml-1'>Loading annotations...</span>
+          </div>
+        </div>
+      );
+    }
+
+    if (annotationError) {
+      return (
+        <div className='bg-red-50 border-l-4 border-red-400 p-2 text-xs'>
+          <div className='flex items-center'>
+            <span className='ml-1'>
+              Error loading annotations: {annotationError}
+            </span>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
   const renderViewer = () => {
     if (!pattern) return null;
 
     switch (pattern.fileType) {
       case PatternFileType.SVG:
-        return <SVGViewer filePath={pattern.filePath} />;
+        return (
+          <ErrorBoundary>
+            <SVGViewer
+              filePath={pattern.filePath}
+              annotations={annotations}
+              onAnnotationCreated={handleAnnotationCreated}
+              onAnnotationUpdated={handleAnnotationUpdated}
+              onAnnotationDeleted={handleAnnotationDeleted}
+              activeAnnotationId={activeAnnotationId}
+              setActiveAnnotationId={handleSetActiveAnnotationId}
+              activeToolType={activeToolType}
+              showAnnotations={showAnnotations}
+            />
+          </ErrorBoundary>
+        );
       case PatternFileType.PDF:
-        return <PDFViewer filePath={pattern.filePath} />;
+        return (
+          <ErrorBoundary>
+            <PDFViewer
+              filePath={pattern.filePath}
+              annotations={annotations}
+              onAnnotationCreated={handleAnnotationCreated}
+              onAnnotationUpdated={handleAnnotationUpdated}
+              onAnnotationDeleted={handleAnnotationDeleted}
+              activeAnnotationId={activeAnnotationId}
+              setActiveAnnotationId={handleSetActiveAnnotationId}
+              activeToolType={activeToolType}
+              showAnnotations={showAnnotations}
+            />
+          </ErrorBoundary>
+        );
       case PatternFileType.IMAGE:
-        return <ImageViewer filePath={pattern.filePath} />;
+        return (
+          <ErrorBoundary>
+            <ImageViewer
+              filePath={pattern.filePath}
+              annotations={annotations}
+              onAnnotationCreated={handleAnnotationCreated}
+              onAnnotationUpdated={handleAnnotationUpdated}
+              onAnnotationDeleted={handleAnnotationDeleted}
+              activeAnnotationId={activeAnnotationId}
+              setActiveAnnotationId={handleSetActiveAnnotationId}
+              activeToolType={activeToolType}
+              showAnnotations={showAnnotations}
+            />
+          </ErrorBoundary>
+        );
       default:
         return (
           <div className='flex items-center justify-center h-96 bg-stone-100 rounded-lg'>
@@ -187,6 +434,20 @@ const PatternDetail: React.FC<PatternDetailProps> = ({
   // Render components tab content
   const renderComponentsTab = () => {
     if (!pattern) return null;
+
+    if (componentLoading) {
+      return (
+        <LoadingSpinner
+          size='medium'
+          color='amber'
+          message='Loading components...'
+        />
+      );
+    }
+
+    if (componentError) {
+      return <ErrorMessage message={componentError} onRetry={handleRetry} />;
+    }
 
     // If viewing component details
     if (selectedComponent && !isEditingComponent) {
@@ -273,17 +534,23 @@ const PatternDetail: React.FC<PatternDetailProps> = ({
     return <MaterialRequirementsViewer patternId={pattern.id} />;
   };
 
-  if (loading) {
+  // Show loading indicator
+  if (loading || patternLoading) {
     return (
       <div
         className={`bg-white ${isModal ? 'rounded-lg p-6' : 'min-h-screen'}`}
       >
-        <LoadingSpinner />
+        <LoadingSpinner
+          size='medium'
+          color='amber'
+          message='Loading pattern...'
+        />
       </div>
     );
   }
 
-  if (error || !pattern) {
+  // Show error message
+  if (error || patternError || !pattern) {
     return (
       <div
         className={`bg-white ${isModal ? 'rounded-lg p-6' : 'min-h-screen'}`}
@@ -306,10 +573,16 @@ const PatternDetail: React.FC<PatternDetailProps> = ({
           <h3 className='text-lg font-medium text-red-800 mb-2'>
             Error Loading Pattern
           </h3>
-          <p className='text-red-700'>{error}</p>
+          <p className='text-red-700'>{error || patternError}</p>
+          <button
+            onClick={handleRetry}
+            className='mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md text-sm font-medium'
+          >
+            Try Again
+          </button>
           <button
             onClick={handleBack}
-            className='mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md text-sm font-medium'
+            className='mt-4 ml-2 px-4 py-2 bg-stone-600 hover:bg-stone-700 text-white rounded-md text-sm font-medium'
           >
             Return to Patterns
           </button>
@@ -411,7 +684,27 @@ const PatternDetail: React.FC<PatternDetailProps> = ({
 
           {/* Viewer content based on active tab */}
           <div>
-            {activeTab === 'pattern' && renderViewer()}
+            {activeTab === 'pattern' && (
+              <div className='bg-white rounded-lg shadow-sm overflow-hidden'>
+                {/* Annotation Toolbar */}
+                <AnnotationToolbar
+                  activeToolType={activeToolType}
+                  setActiveToolType={setActiveToolType}
+                  annotationCount={annotations.length}
+                  onClearAllAnnotations={handleClearAllAnnotations}
+                  onToggleAnnotationsVisibility={
+                    handleToggleAnnotationsVisibility
+                  }
+                  areAnnotationsVisible={showAnnotations}
+                />
+
+                {/* Annotation Loading Status */}
+                {renderAnnotationLoadingStatus()}
+
+                {/* Pattern Viewer */}
+                <div className='h-[600px]'>{renderViewer()}</div>
+              </div>
+            )}
 
             {activeTab === 'components' && renderComponentsTab()}
 
@@ -437,7 +730,7 @@ const PatternDetail: React.FC<PatternDetailProps> = ({
 
         {/* Pattern Metadata Sidebar (1/3 width on desktop, full on mobile) */}
         <div className='md:w-1/3 border-l border-stone-200 bg-white'>
-          <PatternMetadata pattern={pattern} />
+          <PatternMetadata pattern={pattern} onPatternUpdated={setPattern} />
         </div>
       </div>
     </div>

@@ -1,6 +1,8 @@
 // src/components/patterns/common/PatternFilter.tsx
+import { LayoutGrid, List, Search, X } from 'lucide-react';
 import React from 'react';
 import { usePatterns } from '../../../hooks/usePatterns';
+import { EnumTypes } from '../../../types';
 import { PatternFilters } from '../../../types/patternTypes';
 
 interface PatternFilterProps {
@@ -26,25 +28,28 @@ const PatternFilter: React.FC<PatternFilterProps> = ({
   };
 
   const handleSkillLevelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
     setFilters({
       ...filters,
-      skillLevel: e.target.value,
+      skillLevel: value ? (value as EnumTypes.SkillLevel) : undefined,
     });
   };
 
   const handleProjectTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
     setFilters({
       ...filters,
-      projectType: e.target.value,
+      projectType: value ? (value as EnumTypes.ProjectType) : undefined,
     });
   };
 
   const handleClearFilters = () => {
     setFilters({
       searchQuery: '',
-      skillLevel: '',
-      projectType: '',
+      skillLevel: undefined,
+      projectType: undefined,
       tags: [],
+      favorite: undefined,
     });
   };
 
@@ -53,7 +58,8 @@ const PatternFilter: React.FC<PatternFilterProps> = ({
       filters.searchQuery ||
       filters.skillLevel ||
       filters.projectType ||
-      (filters.tags && filters.tags.length > 0)
+      (filters.tags && filters.tags.length > 0) ||
+      filters.favorite !== undefined
     );
   };
 
@@ -71,7 +77,7 @@ const PatternFilter: React.FC<PatternFilterProps> = ({
             </label>
             <select
               id='skillLevel'
-              value={filters.skillLevel}
+              value={filters.skillLevel || ''}
               onChange={handleSkillLevelChange}
               className='bg-white border border-stone-300 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 w-36'
             >
@@ -93,7 +99,7 @@ const PatternFilter: React.FC<PatternFilterProps> = ({
             </label>
             <select
               id='projectType'
-              value={filters.projectType}
+              value={filters.projectType || ''}
               onChange={handleProjectTypeChange}
               className='bg-white border border-stone-300 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 w-40'
             >
@@ -110,25 +116,12 @@ const PatternFilter: React.FC<PatternFilterProps> = ({
           <div className='relative md:hidden w-full mt-2'>
             <input
               type='text'
-              value={filters.searchQuery}
+              value={filters.searchQuery || ''}
               onChange={handleSearchChange}
               placeholder='Search patterns...'
               className='w-full bg-stone-100 border border-stone-300 rounded-md py-2 px-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent'
             />
-            <svg
-              xmlns='http://www.w3.org/2000/svg'
-              className='h-5 w-5 absolute right-3 top-2.5 text-stone-400'
-              fill='none'
-              viewBox='0 0 24 24'
-              stroke='currentColor'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={2}
-                d='M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z'
-              />
-            </svg>
+            <Search className='h-5 w-5 absolute right-3 top-2.5 text-stone-400' />
           </div>
 
           {/* Clear filters button (only appears when filters are active) */}
@@ -136,21 +129,9 @@ const PatternFilter: React.FC<PatternFilterProps> = ({
             <button
               onClick={handleClearFilters}
               className='text-sm text-amber-600 hover:text-amber-800 flex items-center mt-6'
+              aria-label='Clear all filters'
             >
-              <svg
-                xmlns='http://www.w3.org/2000/svg'
-                className='h-4 w-4 mr-1'
-                fill='none'
-                viewBox='0 0 24 24'
-                stroke='currentColor'
-              >
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M6 18L18 6M6 6l12 12'
-                />
-              </svg>
+              <X className='h-4 w-4 mr-1' />
               Clear Filters
             </button>
           )}
@@ -166,21 +147,9 @@ const PatternFilter: React.FC<PatternFilterProps> = ({
                 : 'bg-white text-stone-600 hover:bg-stone-50'
             }`}
             aria-label='List view'
+            aria-pressed={viewMode === 'list'}
           >
-            <svg
-              xmlns='http://www.w3.org/2000/svg'
-              className='h-5 w-5'
-              fill='none'
-              viewBox='0 0 24 24'
-              stroke='currentColor'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={2}
-                d='M4 6h16M4 10h16M4 14h16M4 18h16'
-              />
-            </svg>
+            <List className='h-5 w-5' />
           </button>
           <button
             onClick={() => setViewMode('grid')}
@@ -190,21 +159,9 @@ const PatternFilter: React.FC<PatternFilterProps> = ({
                 : 'bg-white text-stone-600 hover:bg-stone-50'
             }`}
             aria-label='Grid view'
+            aria-pressed={viewMode === 'grid'}
           >
-            <svg
-              xmlns='http://www.w3.org/2000/svg'
-              className='h-5 w-5'
-              fill='none'
-              viewBox='0 0 24 24'
-              stroke='currentColor'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={2}
-                d='M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z'
-              />
-            </svg>
+            <LayoutGrid className='h-5 w-5' />
           </button>
         </div>
       </div>

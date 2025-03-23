@@ -1,6 +1,13 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from 'react';
+import { FinancialExportService } from '../services/export/financial-export-service';
 import {
-  exportFinancialData,
+  calculatePricing as apiCalculatePricing,
   getCostOptimizationInsights,
   getFinancialSummary,
   getMaterialCostTrends,
@@ -8,7 +15,8 @@ import {
   getProductTypeMetrics,
   getProjectFinancials,
   getRevenueTrends,
-} from '../services/mock/financial';
+} from '../services/financial-service';
+import { ExportOptions } from '../types/exportTypes';
 import {
   CostOptimizationInsight,
   FinancialFilterOptions,
@@ -34,16 +42,30 @@ interface FinancialContextProps {
   costInsights: CostOptimizationInsight[];
   platformPerformance: PlatformPerformance[];
   loading: boolean;
+  loadingState: {
+    summary: boolean;
+    revenueTrends: boolean;
+    productMetrics: boolean;
+    materialCosts: boolean;
+    projectFinancials: boolean;
+    costInsights: boolean;
+    platformPerformance: boolean;
+  };
   error: string | null;
   filters: FinancialFilterOptions;
   calculatorInputs: PricingCalculatorInputs;
   calculatorResults: PricingCalculatorResults;
+  calculatorLoading: boolean;
 
   // Actions
   setFilters: (filters: Partial<FinancialFilterOptions>) => void;
   refreshData: () => Promise<void>;
-  exportData: (format: 'csv' | 'excel' | 'pdf') => Promise<boolean>;
+  exportData: (
+    format: 'csv' | 'excel' | 'pdf',
+    options?: Partial<ExportOptions>
+  ) => Promise<boolean>;
   updateCalculatorInputs: (inputs: Partial<PricingCalculatorInputs>) => void;
+  recalculatePricing: () => Promise<void>;
 }
 
 const defaultCalculatorInputs: PricingCalculatorInputs = {
@@ -81,68 +103,144 @@ export const FinancialProvider: React.FC<{ children: React.ReactNode }> = ({
   const [platformPerformance, setPlatformPerformance] = useState<
     PlatformPerformance[]
   >([]);
-  const [loading, setLoading] = useState<boolean>(true);
+
+  // Loading states
+  const [loadingState, setLoadingState] = useState({
+    summary: true,
+    revenueTrends: true,
+    productMetrics: true,
+    materialCosts: true,
+    projectFinancials: true,
+    costInsights: true,
+    platformPerformance: true,
+  });
+
+  // Calculate overall loading state
+  const loading = Object.values(loadingState).some((state) => state);
+
   const [error, setError] = useState<string | null>(null);
   const [filters, setFiltersState] = useState<FinancialFilterOptions>({
     timeFrame: TimeFrame.LAST_6_MONTHS,
   });
+
   const [calculatorInputs, setCalculatorInputs] =
     useState<PricingCalculatorInputs>(defaultCalculatorInputs);
   const [calculatorResults, setCalculatorResults] =
     useState<PricingCalculatorResults>(
       calculatePricing(defaultCalculatorInputs)
     );
+  const [calculatorLoading, setCalculatorLoading] = useState<boolean>(false);
+
+  // Main data loading function - use useCallback to fix useEffect dependency
+  const loadFinancialData = useCallback(async () => {
+    // Reset error state at the beginning
+    setError(null);
+
+    // Set all loading states to true
+    setLoadingState({
+      summary: true,
+      revenueTrends: true,
+      productMetrics: true,
+      materialCosts: true,
+      projectFinancials: true,
+      costInsights: true,
+      platformPerformance: true,
+    });
+
+    try {
+      // Load summary data
+      try {
+        const summaryData = await getFinancialSummary(filters);
+        setSummary(summaryData);
+        setLoadingState((prev) => ({ ...prev, summary: false }));
+      } catch (err) {
+        console.error('Error loading summary data:', err);
+        setLoadingState((prev) => ({ ...prev, summary: false }));
+        // Don't set a global error for individual component failures
+      }
+
+      // Load revenue data
+      try {
+        const revenueData = await getRevenueTrends(filters);
+        setRevenueTrends(revenueData);
+        setLoadingState((prev) => ({ ...prev, revenueTrends: false }));
+      } catch (err) {
+        console.error('Error loading revenue data:', err);
+        setLoadingState((prev) => ({ ...prev, revenueTrends: false }));
+      }
+
+      // Load product data
+      try {
+        const productData = await getProductTypeMetrics(filters);
+        setProductMetrics(productData);
+        setLoadingState((prev) => ({ ...prev, productMetrics: false }));
+      } catch (err) {
+        console.error('Error loading product data:', err);
+        setLoadingState((prev) => ({ ...prev, productMetrics: false }));
+      }
+
+      // Load material data
+      try {
+        const materialData = await getMaterialCostTrends(filters);
+        setMaterialCosts(materialData);
+        setLoadingState((prev) => ({ ...prev, materialCosts: false }));
+      } catch (err) {
+        console.error('Error loading material data:', err);
+        setLoadingState((prev) => ({ ...prev, materialCosts: false }));
+      }
+
+      // Load project data
+      try {
+        const projectData = await getProjectFinancials(filters);
+        setProjectFinancials(projectData);
+        setLoadingState((prev) => ({ ...prev, projectFinancials: false }));
+      } catch (err) {
+        console.error('Error loading project data:', err);
+        setLoadingState((prev) => ({ ...prev, projectFinancials: false }));
+      }
+
+      // Load insights data
+      try {
+        const insightsData = await getCostOptimizationInsights();
+        setCostInsights(insightsData);
+        setLoadingState((prev) => ({ ...prev, costInsights: false }));
+      } catch (err) {
+        console.error('Error loading cost insights:', err);
+        setLoadingState((prev) => ({ ...prev, costInsights: false }));
+      }
+
+      // Load platform data
+      try {
+        const platformData = await getPlatformPerformance(filters);
+        setPlatformPerformance(platformData);
+        setLoadingState((prev) => ({ ...prev, platformPerformance: false }));
+      } catch (err) {
+        console.error('Error loading platform data:', err);
+        setLoadingState((prev) => ({ ...prev, platformPerformance: false }));
+      }
+    } catch (err) {
+      console.error('Error loading financial data:', err);
+      setError(
+        err instanceof Error ? err.message : 'Failed to load financial data'
+      );
+
+      // Reset all loading states
+      setLoadingState({
+        summary: false,
+        revenueTrends: false,
+        productMetrics: false,
+        materialCosts: false,
+        projectFinancials: false,
+        costInsights: false,
+        platformPerformance: false,
+      });
+    }
+  }, [filters]); // Include filters in the dependency array
 
   // Load initial data
   useEffect(() => {
     loadFinancialData();
-  }, [filters]);
-
-  // Update calculator results when inputs change
-  useEffect(() => {
-    setCalculatorResults(calculatePricing(calculatorInputs));
-  }, [calculatorInputs]);
-
-  // Main data loading function
-  const loadFinancialData = async () => {
-    try {
-      setLoading(true);
-
-      // Load all data in parallel
-      const [
-        summaryData,
-        revenueData,
-        productData,
-        materialData,
-        projectData,
-        insightsData,
-        platformData,
-      ] = await Promise.all([
-        getFinancialSummary(filters),
-        getRevenueTrends(filters),
-        getProductTypeMetrics(filters),
-        getMaterialCostTrends(filters),
-        getProjectFinancials(filters),
-        getCostOptimizationInsights(),
-        getPlatformPerformance(filters),
-      ]);
-
-      // Update state with fetched data
-      setSummary(summaryData);
-      setRevenueTrends(revenueData);
-      setProductMetrics(productData);
-      setMaterialCosts(materialData);
-      setProjectFinancials(projectData);
-      setCostInsights(insightsData);
-      setPlatformPerformance(platformData);
-      setError(null);
-    } catch (err) {
-      console.error('Error loading financial data:', err);
-      setError('Failed to load financial data');
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [loadFinancialData]); // Now loadFinancialData is a dependency
 
   // Update filters and trigger data reload
   const setFilters = (newFilters: Partial<FinancialFilterOptions>) => {
@@ -155,112 +253,93 @@ export const FinancialProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   // Export data function
-  // Updated export method to support more detailed options
   const exportData = async (
     format: 'csv' | 'excel' | 'pdf',
-    options?: {
-      timeframe?: TimeFrame;
-      includeSections?: {
-        revenueData?: boolean;
-        materialCosts?: boolean;
-        productMetrics?: boolean;
-        projectFinancials?: boolean;
-        platformData?: boolean;
-        costInsights?: boolean;
-        pricingReferences?: boolean;
-      };
-    }
+    options?: Partial<ExportOptions>
   ): Promise<boolean> => {
     try {
-      // Generate a timestamped filename
-      const timestamp = new Date()
-        .toISOString()
-        .replace(/[-:]/g, '')
-        .substring(0, 15);
-      const filename = `hidesync_financial_export_${timestamp}`;
-
-      // Use the current filters or override with provided options
-      const exportFilters = {
-        ...filters,
-        ...(options?.timeframe ? { timeFrame: options.timeframe } : {}),
-      };
-
-      // Determine which sections to include
-      const includeSections = {
-        revenueData: true,
-        materialCosts: true,
-        productMetrics: true,
-        projectFinancials: true,
-        platformData: true,
+      // Convert string array sections to object with boolean properties if needed
+      let includeSections = {
+        revenueData: false,
+        materialCosts: false,
+        productMetrics: false,
+        projectFinancials: false,
+        platformData: false,
         costInsights: false,
         pricingReferences: false,
-        ...options?.includeSections,
       };
 
-      // Fetch all data
-      const [
-        summaryData,
-        revenueData,
-        productData,
-        materialData,
-        projectData,
-        platformData,
-        costInsightsData,
-      ] = await Promise.all([
-        getFinancialSummary(exportFilters),
-        includeSections.revenueData
-          ? getRevenueTrends(exportFilters)
-          : Promise.resolve([]),
-        includeSections.productMetrics
-          ? getProductTypeMetrics(exportFilters)
-          : Promise.resolve([]),
-        includeSections.materialCosts
-          ? getMaterialCostTrends(exportFilters)
-          : Promise.resolve([]),
-        includeSections.projectFinancials
-          ? getProjectFinancials(exportFilters)
-          : Promise.resolve([]),
-        includeSections.platformData
-          ? getPlatformPerformance(exportFilters)
-          : Promise.resolve([]),
-        includeSections.costInsights
-          ? getCostOptimizationInsights()
-          : Promise.resolve([]),
-      ]);
+      // If options include sections, use them
+      if (options?.includeSections) {
+        includeSections = options.includeSections;
+      }
 
-      // Prepare export data
+      // Prepare export options with defaults
+      const exportOptions: ExportOptions = {
+        format,
+        timeframe: options?.timeframe || filters.timeFrame,
+        includeSections,
+      };
+
+      // Prepare export data - handle null summary
       const exportData = {
-        summary: summaryData,
-        revenueTrends: revenueData,
-        productMetrics: productData,
-        materialCosts: materialData,
-        projectFinancials: projectData,
-        platformPerformance: platformData,
-        costInsights: costInsightsData,
+        summary: summary || undefined,
+        revenueTrends,
+        productMetrics,
+        materialCosts,
+        projectFinancials,
+        platformPerformance,
+        costInsights,
       };
 
-      // Use the existing export function with prepared data
-      const blob = await exportFinancialData(format, exportData);
+      // Use the export service
+      const result = await FinancialExportService.exportFinancialData(
+        exportOptions,
+        exportData
+      );
 
-      // Create download link and trigger the download
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${filename}.${format}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      return true;
+      return result.success;
     } catch (err) {
       console.error('Error exporting data:', err);
       return false;
     }
   };
+
   // Update calculator inputs
   const updateCalculatorInputs = (inputs: Partial<PricingCalculatorInputs>) => {
     setCalculatorInputs((prev) => ({ ...prev, ...inputs }));
   };
+
+  // Recalculate pricing using API - use useCallback to fix useEffect dependency
+  const recalculatePricing = useCallback(async () => {
+    setCalculatorLoading(true);
+    try {
+      const results = await apiCalculatePricing(calculatorInputs);
+      setCalculatorResults(results);
+    } catch (err) {
+      console.error('Error calculating pricing:', err);
+      // Fallback to client-side calculation if API fails
+      setCalculatorResults(calculatePricing(calculatorInputs));
+    } finally {
+      setCalculatorLoading(false);
+    }
+  }, [calculatorInputs]);
+
+  // Update calculator results when inputs change
+  useEffect(() => {
+    // Use client-side calculation for immediate feedback
+    const clientResults = calculatePricing(calculatorInputs);
+    setCalculatorResults(clientResults);
+
+    // Then get more accurate results from the API
+    const fetchApiResults = async () => {
+      await recalculatePricing();
+    };
+
+    // Use a debounce technique to avoid excessive API calls
+    const timeoutId = setTimeout(fetchApiResults, 500);
+    return () => clearTimeout(timeoutId);
+  }, [calculatorInputs, recalculatePricing]); // Add recalculatePricing as dependency
 
   // Context value
   const value = {
@@ -272,14 +351,17 @@ export const FinancialProvider: React.FC<{ children: React.ReactNode }> = ({
     costInsights,
     platformPerformance,
     loading,
+    loadingState,
     error,
     filters,
     calculatorInputs,
     calculatorResults,
+    calculatorLoading,
     setFilters,
     refreshData,
     exportData,
     updateCalculatorInputs,
+    recalculatePricing,
   };
 
   return (

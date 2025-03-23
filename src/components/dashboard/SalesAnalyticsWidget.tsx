@@ -59,7 +59,7 @@ const SalesAnalyticsWidget: React.FC = () => {
     // Calculate statistics
     const totalSales = filteredSales.length;
     const totalRevenue = filteredSales.reduce(
-      (sum, sale) => sum + sale.total,
+      (sum, sale) => sum + sale.totalAmount,
       0
     );
     const averageOrderValue = totalSales > 0 ? totalRevenue / totalSales : 0;

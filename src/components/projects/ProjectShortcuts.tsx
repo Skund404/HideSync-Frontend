@@ -4,10 +4,10 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useKeyboardShortcutsContext } from '../../context/KeyboardShortcutsContext';
 import { useProjects } from '../../context/ProjectContext';
 import { ShortcutDefinition } from '../../hooks/useKeyboardShortcuts';
-import { ProjectStatus } from '../../types/enums';
+import { ProjectStatus } from '../../types/projectTimeline';
 
 interface ProjectShortcutsProps {
-  projectId?: number; // Changed to number to match the Project model
+  projectId?: string; // Changed to string to match the Project model
   onStatusChange?: (status: string) => void;
   onGeneratePickingList?: () => void;
   onSaveNote?: () => void;

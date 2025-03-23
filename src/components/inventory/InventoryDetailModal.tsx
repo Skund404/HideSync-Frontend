@@ -1,5 +1,6 @@
+// src/components/inventory/InventoryDetailModal.tsx
+import { X } from 'lucide-react';
 import React from 'react';
-import { ProjectType } from '../../types/enums';
 
 // Helper function to format date
 const formatDate = (dateString: string | Date | null) => {
@@ -47,6 +48,29 @@ const formatProductType = (type: string) => {
     .replace(/\b\w/g, (l) => l.toUpperCase());
 };
 
+// Helper function to check if product contains leather material
+const containsLeatherMaterial = (product: any) => {
+  if (!product.materials || !Array.isArray(product.materials)) return false;
+
+  const leatherKeywords = [
+    'leather',
+    'hide',
+    'suede',
+    'nubuck',
+    'cordovan',
+    'calfskin',
+    'cowhide',
+    'sheepskin',
+    'goatskin',
+    'deerskin',
+    'pigskin',
+  ];
+
+  return product.materials.some((material: string) =>
+    leatherKeywords.some((keyword) => material.toLowerCase().includes(keyword))
+  );
+};
+
 interface InventoryDetailModalProps {
   product: any;
   onClose: () => void;
@@ -78,20 +102,7 @@ const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({
             onClick={onClose}
             className='text-stone-400 hover:text-stone-600'
           >
-            <svg
-              xmlns='http://www.w3.org/2000/svg'
-              className='h-6 w-6'
-              fill='none'
-              viewBox='0 0 24 24'
-              stroke='currentColor'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={2}
-                d='M6 18L18 6M6 6l12 12'
-              />
-            </svg>
+            <X className='h-6 w-6' />
           </button>
         </div>
 
@@ -208,9 +219,9 @@ const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({
                 </span>
                 <span className='text-stone-800 font-medium'>
                   {product.quantity}{' '}
-                  {product.productType === ProjectType.LEATHER
-                    ? 'sq ft'
-                    : 'units'}
+                  {containsLeatherMaterial(product)
+                    ? product.unit || 'sq ft'
+                    : product.unit || 'units'}
                 </span>
               </div>
               <div>
@@ -259,6 +270,21 @@ const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({
             <h3 className='text-lg font-medium text-stone-800 mb-4'>
               Additional Details
             </h3>
+            {product.materials && product.materials.length > 0 && (
+              <div className='mb-3'>
+                <span className='text-stone-500 text-sm block'>Materials</span>
+                <div className='flex flex-wrap gap-1 mt-1'>
+                  {product.materials.map((material: string, index: number) => (
+                    <span
+                      key={index}
+                      className='text-xs bg-stone-100 px-2 py-0.5 rounded'
+                    >
+                      {material}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
             {product.notes && (
               <div className='mb-3'>
                 <span className='text-stone-500 text-sm block'>Notes</span>
@@ -268,7 +294,7 @@ const InventoryDetailModal: React.FC<InventoryDetailModalProps> = ({
             <div>
               <span className='text-stone-500 text-sm block'>Created</span>
               <span className='text-stone-800'>
-                {formatDate(product.createdAt)}
+                {formatDate(product.dateAdded)}
               </span>
             </div>
           </div>

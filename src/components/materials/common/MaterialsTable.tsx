@@ -1,17 +1,33 @@
-import { Material, MaterialType } from '@/types/materialTypes';
+// src/components/materials/common/MaterialsTable.tsx
+import { Edit, Eye, MoreHorizontal, Plus } from 'lucide-react';
+import React from 'react';
+import { Material, MaterialType } from '../../../types/materialTypes';
 import {
   formatPrice,
   formatQuantity,
   formatType,
-  getStatusColor,
-} from '@/utils/materialHelpers';
-import React from 'react';
+  getColorHex,
+  getHardwareMaterialColor,
+  getStatusColorClass,
+} from '../../../utils/materialHelpers';
+import {
+  isAdhesiveType,
+  isBurnishingGumType,
+  isDyeType,
+  isEdgePaintType,
+  isFinishType,
+  isMaterialOfType,
+  isThreadType,
+} from '../../../utils/materialTypeGuards';
 
 interface MaterialsTableProps {
   materials: Material[];
   materialType: MaterialType | 'all';
   onView: (material: Material) => void;
   onAdjustStock: (material: Material) => void;
+  onEdit?: (material: Material) => void;
+  onDelete?: (id: number | string) => Promise<void>;
+  isDeleting?: boolean;
 }
 
 const MaterialsTable: React.FC<MaterialsTableProps> = ({
@@ -19,50 +35,46 @@ const MaterialsTable: React.FC<MaterialsTableProps> = ({
   materialType,
   onView,
   onAdjustStock,
+  onEdit,
+  onDelete,
+  isDeleting = false,
 }) => {
-  // Helper function to get color hex for display
-  const getColorHex = (colorName: string): string => {
-    // Define a common color map
-    const colorMap: Record<string, string> = {
-      natural: '#D2B48C',
-      tan: '#D2B48C',
-      brown: '#8B4513',
-      dark_brown: '#5C4033',
-      black: '#222222',
-      navy: '#000080',
-      burgundy: '#800020',
-      red: '#B22222',
-      green: '#006400',
-      blue: '#0000CD',
-      yellow: '#FFD700',
-      orange: '#FF8C00',
-      purple: '#800080',
-      white: '#F5F5F5',
-      grey: '#808080',
-      gray: '#808080',
-      silver: '#C0C0C0',
-      olive: '#808000',
-    };
+  // Helper to safely get supplier info - supports both supplierId and potential supplier property
+  const getSupplierDisplay = (material: Material): string => {
+    // Try to access supplier property from material
+    const supplierName =
+      'supplier' in material
+        ? typeof material.supplier === 'string'
+          ? material.supplier
+          : ''
+        : '';
 
-    return colorMap[colorName.toLowerCase()] || '#D2B48C'; // Default to tan if color not found
+    // If supplier property exists, use it, otherwise use supplierId
+    return (
+      supplierName ||
+      (material.supplierId ? material.supplierId.toString() : '-')
+    );
   };
 
-  // Get general material color for hardware type
-  const getHardwareMaterialColor = (material: string): string => {
-    const materialColorMap: Record<string, string> = {
-      brass: '#B5A642',
-      nickel: '#C0C0C0',
-      stainless_steel: '#E0E0E0',
-      steel: '#71797E',
-      zinc: '#D3D4D5',
-      copper: '#B87333',
-      aluminum: '#A9A9A9',
-      plastic: '#1E90FF',
-      silver: '#C0C0C0',
-      gold: '#FFD700',
-    };
+  // Helper to safely get price
+  const getDisplayPrice = (material: Material): string => {
+    // Try to access price property from material
+    const price =
+      'price' in material
+        ? typeof material.price === 'number'
+          ? material.price
+          : material.sellPrice
+        : material.sellPrice;
 
-    return materialColorMap[material.toLowerCase()] || '#C0C0C0'; // Default to silver
+    return formatPrice(price);
+  };
+
+  // Helper to safely format a property that might be an object or string
+  const safeFormatType = (value: any): string => {
+    if (!value) return '-';
+    if (typeof value === 'string') return formatType(value);
+    if (typeof value === 'object') return '-';
+    return String(value);
   };
 
   // Render table headers based on material type
@@ -304,18 +316,24 @@ const MaterialsTable: React.FC<MaterialsTableProps> = ({
         <td className='px-6 py-4 whitespace-nowrap'>
           <div className='flex items-center'>
             <div className='h-10 w-10 flex-shrink-0'>
-              <img
-                className='h-10 w-10 rounded-md object-cover'
-                src={material.thumbnail || ''}
-                alt=''
-              />
+              {material.thumbnail ? (
+                <img
+                  className='h-10 w-10 rounded-md object-cover'
+                  src={material.thumbnail}
+                  alt={material.name}
+                />
+              ) : (
+                <div className='h-10 w-10 rounded-md bg-stone-100 flex items-center justify-center text-stone-400'>
+                  <span className='text-xs'>No img</span>
+                </div>
+              )}
             </div>
             <div className='ml-4'>
               <div className='text-sm font-medium text-stone-900'>
                 {material.name}
               </div>
               <div className='text-xs text-stone-500'>
-                {material.supplierSku}
+                {material.supplierSku || material.sku || '-'}
               </div>
             </div>
           </div>
@@ -325,7 +343,7 @@ const MaterialsTable: React.FC<MaterialsTableProps> = ({
         {materialType === 'all' ? (
           <td className='px-6 py-4 whitespace-nowrap'>
             <div className='text-sm text-stone-900'>
-              {formatType(material.materialType)}
+              {formatType(String(material.materialType))}
             </div>
           </td>
         ) : null}
@@ -333,20 +351,19 @@ const MaterialsTable: React.FC<MaterialsTableProps> = ({
         {/* Type column */}
         <td className='px-6 py-4 whitespace-nowrap'>
           <div className='text-sm text-stone-900'>
-            {material.materialType === MaterialType.LEATHER &&
-              (material as any).leatherType &&
-              formatType((material as any).leatherType)}
-            {material.materialType === MaterialType.HARDWARE &&
-              (material as any).hardwareType &&
-              formatType((material as any).hardwareType)}
-            {(material.materialType === MaterialType.THREAD ||
-              material.materialType === MaterialType.WAXED_THREAD ||
-              material.materialType === MaterialType.DYE ||
-              material.materialType === MaterialType.EDGE_PAINT ||
-              material.materialType === MaterialType.BURNISHING_GUM ||
-              material.materialType === MaterialType.FINISH ||
-              material.materialType === MaterialType.ADHESIVE) &&
-              formatType(material.materialType)}
+            {isMaterialOfType(material, MaterialType.LEATHER) &&
+              'leatherType' in material &&
+              safeFormatType(material.leatherType)}
+            {isMaterialOfType(material, MaterialType.HARDWARE) &&
+              'hardwareType' in material &&
+              safeFormatType(material.hardwareType)}
+            {(isThreadType(material) ||
+              isDyeType(material) ||
+              isEdgePaintType(material) ||
+              isBurnishingGumType(material) ||
+              isFinishType(material) ||
+              isAdhesiveType(material)) &&
+              formatType(String(material.materialType))}
           </div>
         </td>
 
@@ -355,12 +372,17 @@ const MaterialsTable: React.FC<MaterialsTableProps> = ({
           <>
             <td className='px-6 py-4 whitespace-nowrap'>
               <div className='text-sm text-stone-900'>
-                {formatType((material as any).animalSource)}
+                {'animalSource' in material && material.animalSource
+                  ? safeFormatType(material.animalSource)
+                  : '-'}
               </div>
             </td>
             <td className='px-6 py-4 whitespace-nowrap'>
               <div className='text-sm text-stone-900'>
-                {(material as any).thickness} mm
+                {'thickness' in material &&
+                typeof material.thickness === 'number'
+                  ? `${material.thickness} mm`
+                  : '-'}
               </div>
             </td>
           </>
@@ -370,27 +392,39 @@ const MaterialsTable: React.FC<MaterialsTableProps> = ({
           <>
             <td className='px-6 py-4 whitespace-nowrap'>
               <div className='flex items-center'>
-                <div
-                  className='w-3 h-3 rounded-full mr-2'
-                  style={{
-                    backgroundColor: getHardwareMaterialColor(
-                      (material as any).hardwareMaterial
-                    ),
-                  }}
-                ></div>
+                {'hardwareMaterial' in material &&
+                  material.hardwareMaterial &&
+                  typeof material.hardwareMaterial === 'string' && (
+                    <div
+                      className='w-3 h-3 rounded-full mr-2'
+                      style={{
+                        backgroundColor: getHardwareMaterialColor(
+                          material.hardwareMaterial
+                        ),
+                      }}
+                    ></div>
+                  )}
                 <div className='text-sm text-stone-900'>
-                  {formatType((material as any).hardwareMaterial)}
+                  {'hardwareMaterial' in material && material.hardwareMaterial
+                    ? safeFormatType(material.hardwareMaterial)
+                    : '-'}
                 </div>
               </div>
             </td>
             <td className='px-6 py-4 whitespace-nowrap'>
               <div className='text-sm text-stone-900'>
-                {formatType((material as any).finish)}
+                {'finish' in material && material.finish
+                  ? safeFormatType(material.finish)
+                  : '-'}
               </div>
             </td>
             <td className='px-6 py-4 whitespace-nowrap'>
               <div className='text-sm text-stone-900'>
-                {(material as any).size}
+                {'size' in material && material.size
+                  ? typeof material.size === 'string'
+                    ? material.size
+                    : String(material.size)
+                  : '-'}
               </div>
             </td>
           </>
@@ -399,18 +433,20 @@ const MaterialsTable: React.FC<MaterialsTableProps> = ({
         {materialType === MaterialType.SUPPLIES && (
           <>
             <td className='px-6 py-4 whitespace-nowrap'>
-              {(material as any).color && (
+              {'color' in material &&
+              material.color &&
+              typeof material.color === 'string' ? (
                 <div className='flex items-center'>
                   <div
                     className='w-3 h-3 rounded-full mr-2'
                     style={{
-                      backgroundColor: getColorHex((material as any).color),
+                      backgroundColor: getColorHex(material.color),
                     }}
                   ></div>
-                  <div className='text-sm text-stone-900'>
-                    {(material as any).color}
-                  </div>
+                  <div className='text-sm text-stone-900'>{material.color}</div>
                 </div>
+              ) : (
+                <div className='text-sm text-stone-500'>-</div>
               )}
             </td>
           </>
@@ -419,11 +455,11 @@ const MaterialsTable: React.FC<MaterialsTableProps> = ({
         {/* Status column */}
         <td className='px-6 py-4 whitespace-nowrap'>
           <span
-            className={`px-2 py-1 inline-flex text-xs leading-5 font-medium rounded-full ${getStatusColor(
+            className={`px-2 py-1 inline-flex text-xs leading-5 font-medium rounded-full ${getStatusColorClass(
               material.status
             )}`}
           >
-            {material.status.replace(/_/g, ' ')}
+            {formatType(String(material.status))}
           </span>
         </td>
 
@@ -432,11 +468,12 @@ const MaterialsTable: React.FC<MaterialsTableProps> = ({
           <div className='text-sm text-stone-900'>
             {formatQuantity(material.quantity, material.unit)}
           </div>
-          {materialType === MaterialType.LEATHER && (material as any).area && (
-            <div className='text-xs text-stone-500'>
-              {(material as any).area} sqft
-            </div>
-          )}
+          {materialType === MaterialType.LEATHER &&
+            'area' in material &&
+            material.area &&
+            typeof material.area === 'number' && (
+              <div className='text-xs text-stone-500'>{material.area} sqft</div>
+            )}
         </td>
 
         {/* Location column */}
@@ -450,10 +487,10 @@ const MaterialsTable: React.FC<MaterialsTableProps> = ({
         {(materialType === 'all' || materialType === MaterialType.SUPPLIES) && (
           <td className='px-6 py-4 whitespace-nowrap'>
             <div className='text-sm text-stone-900'>
-              {material.supplier || 'Unknown'}
+              {getSupplierDisplay(material)}
             </div>
             <div className='text-xs text-stone-500'>
-              {formatPrice(material.price)}
+              {getDisplayPrice(material)}
             </div>
           </td>
         )}
@@ -464,78 +501,28 @@ const MaterialsTable: React.FC<MaterialsTableProps> = ({
             <button
               onClick={() => onView(material)}
               className='text-amber-600 hover:text-amber-900'
+              title='View details'
             >
-              <svg
-                xmlns='http://www.w3.org/2000/svg'
-                className='h-5 w-5'
-                fill='none'
-                viewBox='0 0 24 24'
-                stroke='currentColor'
-              >
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M15 12a3 3 0 11-6 0 3 3 0 016 0z'
-                />
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z'
-                />
-              </svg>
+              <Eye className='h-5 w-5' />
             </button>
             <button
               onClick={() => onAdjustStock(material)}
               className='text-stone-600 hover:text-stone-900'
+              title='Adjust stock'
             >
-              <svg
-                xmlns='http://www.w3.org/2000/svg'
-                className='h-5 w-5'
-                fill='none'
-                viewBox='0 0 24 24'
-                stroke='currentColor'
-              >
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M12 6v6m0 0v6m0-6h6m-6 0H6'
-                />
-              </svg>
+              <Plus className='h-5 w-5' />
             </button>
-            <button className='text-stone-600 hover:text-stone-900'>
-              <svg
-                xmlns='http://www.w3.org/2000/svg'
-                className='h-5 w-5'
-                fill='none'
-                viewBox='0 0 24 24'
-                stroke='currentColor'
+            {onEdit && (
+              <button
+                onClick={() => onEdit(material)}
+                className='text-stone-600 hover:text-stone-900'
+                title='Edit material'
               >
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z'
-                />
-              </svg>
-            </button>
+                <Edit className='h-5 w-5' />
+              </button>
+            )}
             <button className='text-stone-600 hover:text-stone-900'>
-              <svg
-                xmlns='http://www.w3.org/2000/svg'
-                className='h-5 w-5'
-                fill='none'
-                viewBox='0 0 24 24'
-                stroke='currentColor'
-              >
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z'
-                />
-              </svg>
+              <MoreHorizontal className='h-5 w-5' />
             </button>
           </div>
         </td>

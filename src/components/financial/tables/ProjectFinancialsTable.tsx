@@ -1,3 +1,4 @@
+// src/components/financial/tables/ProjectFinancialsTable.tsx
 import { Search } from 'lucide-react';
 import React, { useState } from 'react';
 import { useFinancial } from '../../../context/FinancialContext';
@@ -5,26 +6,43 @@ import {
   formatCurrency,
   formatPercentage,
 } from '../../../utils/financialHelpers';
+import LoadingSpinner from '../../common/LoadingSpinner';
+import ErrorMessage from '../../common/ErrorMessage';
 
 const ProjectFinancialsTable: React.FC = () => {
-  const { projectFinancials, loading } = useFinancial();
+  const { projectFinancials, loading, loadingState, error, refreshData } = useFinancial();
   const [searchTerm, setSearchTerm] = useState('');
 
-  if (loading) {
+  // Show loading spinner when loading project data
+  if (loading || loadingState.projectFinancials) {
     return (
       <div className='flex items-center justify-center h-40'>
-        <div className='text-center'>
-          <div className='inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-600'></div>
-          <p className='mt-2 text-sm text-stone-500'>Loading project data...</p>
-        </div>
+        <LoadingSpinner
+          size="small"
+          color="amber"
+          message="Loading project data..."
+        />
       </div>
     );
   }
 
+  // Handle error state with retry option
+  if (error) {
+    return (
+      <div className='py-4'>
+        <ErrorMessage 
+          message="Unable to load project financial data. Please try again." 
+          onRetry={refreshData} 
+        />
+      </div>
+    );
+  }
+
+  // Handle empty state
   if (!projectFinancials.length) {
     return (
       <div className='flex items-center justify-center h-40'>
-        <p className='text-stone-500'>No project data available</p>
+        <p className='text-stone-500'>No project data available for the selected period</p>
       </div>
     );
   }

@@ -1,3 +1,4 @@
+// src/pages/ProjectTemplatePage.tsx
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import ProjectTemplateList from '../components/projects/ProjectTemplateList';
@@ -165,19 +166,6 @@ const ProjectTemplatePage: React.FC = () => {
   const handleUseTemplate = () => {
     if (!template) return;
     navigate(`/projects/new?template=${template.id}`);
-  };
-
-  // Handle creating from template
-  const renderCreateFromTemplate = () => {
-    return (
-      <div>
-        <h1 className='text-2xl font-bold mb-6'>Create Template</h1>
-        <TemplateForm
-          onSave={(templateId: string) => handleTemplateSaved(templateId)}
-          onCancel={handleCancel}
-        />
-      </div>
-    );
   };
 
   return <div className='container mx-auto px-4 py-6'>{renderContent()}</div>;

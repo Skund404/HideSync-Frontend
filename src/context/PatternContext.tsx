@@ -7,15 +7,16 @@ import React, {
   useState,
 } from 'react';
 import {
-  addPattern,
-  deletePattern,
-  filterPatterns as filterPatternsService,
-  getPatternById,
   getPatterns,
-  togglePatternFavorite,
+  getPatternById,
+  createPattern,
   updatePattern,
-} from '../services/mock/patterns';
+  deletePattern,
+  togglePatternFavorite,
+  filterPatterns,
+} from '../services/pattern-service';
 import { Pattern, PatternFilters } from '../types/patternTypes';
+import { ApiError } from '../services/api-client';
 
 interface PatternContextValue {
   patterns: Pattern[];
@@ -26,7 +27,7 @@ interface PatternContextValue {
   updatePattern: (id: number, pattern: Partial<Pattern>) => Promise<Pattern>;
   deletePattern: (id: number) => Promise<boolean>;
   toggleFavorite: (id: number) => Promise<Pattern>;
-  filterPatterns: (filters: PatternFilters) => Pattern[];
+  filterPatterns: (filters: PatternFilters) => Promise<Pattern[]>;
   refreshPatterns: () => Promise<void>;
 }
 
@@ -48,7 +49,8 @@ export const PatternProvider: React.FC<{ children: ReactNode }> = ({
       const data = await getPatterns();
       setPatterns(data);
     } catch (err) {
-      setError('Failed to fetch patterns');
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to fetch patterns');
       console.error('Error fetching patterns:', err);
     } finally {
       setLoading(false);
@@ -63,7 +65,8 @@ export const PatternProvider: React.FC<{ children: ReactNode }> = ({
     try {
       return await getPatternById(id);
     } catch (err) {
-      setError(`Failed to fetch pattern with id ${id}`);
+      const apiError = err as ApiError;
+      setError(apiError.message || `Failed to fetch pattern with id ${id}`);
       console.error(`Error fetching pattern with id ${id}:`, err);
       return null;
     }
@@ -73,11 +76,12 @@ export const PatternProvider: React.FC<{ children: ReactNode }> = ({
     pattern: Omit<Pattern, 'id'>
   ): Promise<Pattern> => {
     try {
-      const newPattern = await addPattern(pattern);
+      const newPattern = await createPattern(pattern);
       setPatterns((prevPatterns) => [...prevPatterns, newPattern]);
       return newPattern;
     } catch (err) {
-      setError('Failed to add pattern');
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to add pattern');
       console.error('Error adding pattern:', err);
       throw err;
     }
@@ -89,12 +93,16 @@ export const PatternProvider: React.FC<{ children: ReactNode }> = ({
   ): Promise<Pattern> => {
     try {
       const updatedPattern = await updatePattern(id, pattern);
+      
+      // Optimistic update of the patterns list
       setPatterns((prevPatterns) =>
         prevPatterns.map((p) => (p.id === id ? updatedPattern : p))
       );
+      
       return updatedPattern;
     } catch (err) {
-      setError(`Failed to update pattern with id ${id}`);
+      const apiError = err as ApiError;
+      setError(apiError.message || `Failed to update pattern with id ${id}`);
       console.error(`Error updating pattern with id ${id}:`, err);
       throw err;
     }
@@ -103,12 +111,16 @@ export const PatternProvider: React.FC<{ children: ReactNode }> = ({
   const handleDeletePattern = async (id: number): Promise<boolean> => {
     try {
       const success = await deletePattern(id);
+      
+      // Optimistic update of the patterns list
       if (success) {
         setPatterns((prevPatterns) => prevPatterns.filter((p) => p.id !== id));
       }
+      
       return success;
     } catch (err) {
-      setError(`Failed to delete pattern with id ${id}`);
+      const apiError = err as ApiError;
+      setError(apiError.message || `Failed to delete pattern with id ${id}`);
       console.error(`Error deleting pattern with id ${id}:`, err);
       throw err;
     }
@@ -117,19 +129,30 @@ export const PatternProvider: React.FC<{ children: ReactNode }> = ({
   const handleToggleFavorite = async (id: number): Promise<Pattern> => {
     try {
       const updatedPattern = await togglePatternFavorite(id);
+      
+      // Optimistic update of the patterns list
       setPatterns((prevPatterns) =>
         prevPatterns.map((p) => (p.id === id ? updatedPattern : p))
       );
+      
       return updatedPattern;
     } catch (err) {
-      setError(`Failed to toggle favorite for pattern with id ${id}`);
+      const apiError = err as ApiError;
+      setError(apiError.message || `Failed to toggle favorite for pattern with id ${id}`);
       console.error(`Error toggling favorite for pattern with id ${id}:`, err);
       throw err;
     }
   };
 
-  const handleFilterPatterns = (filters: PatternFilters): Pattern[] => {
-    return filterPatternsService(filters);
+  const handleFilterPatterns = async (filters: PatternFilters): Promise<Pattern[]> => {
+    try {
+      return await filterPatterns(filters);
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to filter patterns');
+      console.error('Error filtering patterns:', err);
+      throw err;
+    }
   };
 
   const value: PatternContextValue = {

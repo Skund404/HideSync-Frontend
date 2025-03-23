@@ -1,28 +1,21 @@
+// src/components/sales/MaterialRequirements.tsx
 import React, { useEffect, useState } from 'react';
 import { useMaterials } from '../../context/MaterialsContext';
 import { useSales } from '../../context/SalesContext';
-import { Material, MaterialStatus } from '../../types/materialTypes';
-import { Sale } from '../../types/salesTypes';
+import * as salesMaterialsService from '../../services/sales-materials-service';
+import { MaterialStatus } from '../../types/enums';
+import ErrorMessage from '../common/ErrorMessage';
 import LoadingSpinner from '../common/LoadingSpinner';
 
 // Material requirement as stored in the final list
 interface MaterialRequirement {
-  materialId: string | number;
+  materialId: number; // Changed from string | number to just number for consistency
   materialName: string;
   quantity: number;
   available: number;
   status: MaterialStatus;
   unit?: string;
   storageLocation?: string;
-  materialType: string;
-}
-
-// Initial definition type that doesn't need inventory-specific fields
-interface MaterialDefinition {
-  materialId: string | number;
-  materialName: string;
-  quantity: number;
-  unit?: string;
   materialType: string;
 }
 
@@ -43,251 +36,97 @@ const MaterialRequirements: React.FC<MaterialRequirementsProps> = ({
   const sale = getSale(saleId);
 
   useEffect(() => {
-    if (!sale || materialsLoading) {
+    if (!sale) {
       return;
     }
 
-    setLoading(true);
-    try {
-      // Calculate material requirements based on the sale items
-      const calculatedRequirements = calculateMaterialRequirements(
-        sale,
-        materials
-      );
-      setRequirements(calculatedRequirements);
-      setLoading(false);
-    } catch (err) {
-      setError('Failed to calculate material requirements');
-      setLoading(false);
-    }
-  }, [sale, materials, materialsLoading]);
+    const fetchMaterialRequirements = async () => {
+      setLoading(true);
+      setError(null);
 
-  // Function to calculate material requirements based on sale items
-  const calculateMaterialRequirements = (
-    sale: Sale,
-    materials: Material[]
-  ): MaterialRequirement[] => {
-    // In a real implementation, this would use actual product recipes or BOMs
-    // For this demo, we'll use a simplified mapping from products to materials
+      try {
+        // Fetch material requirements from the API
+        const saleMaterials = await salesMaterialsService.getSaleMaterials(
+          saleId
+        );
 
-    const productMaterialMap: Record<string, MaterialDefinition[]> = {
-      // Wallets
-      'Leather Wallet': [
-        {
-          materialId: 1,
-          materialName: 'Vegetable Tanned Leather',
-          quantity: 0.5,
-          unit: 'sq ft',
-          materialType: 'leather',
-        },
-        {
-          materialId: 2,
-          materialName: 'Waxed Thread',
-          quantity: 0.1,
-          unit: 'spool',
-          materialType: 'supplies',
-        },
-        {
-          materialId: 3,
-          materialName: 'Edge Paint',
-          quantity: 0.05,
-          unit: 'bottle',
-          materialType: 'supplies',
-        },
-      ],
-      'Bifold Wallet': [
-        {
-          materialId: 1,
-          materialName: 'Vegetable Tanned Leather',
-          quantity: 0.4,
-          unit: 'sq ft',
-          materialType: 'leather',
-        },
-        {
-          materialId: 2,
-          materialName: 'Waxed Thread',
-          quantity: 0.1,
-          unit: 'spool',
-          materialType: 'supplies',
-        },
-        {
-          materialId: 3,
-          materialName: 'Edge Paint',
-          quantity: 0.05,
-          unit: 'bottle',
-          materialType: 'supplies',
-        },
-      ],
-      'Card Holder': [
-        {
-          materialId: 1,
-          materialName: 'Vegetable Tanned Leather',
-          quantity: 0.2,
-          unit: 'sq ft',
-          materialType: 'leather',
-        },
-        {
-          materialId: 2,
-          materialName: 'Waxed Thread',
-          quantity: 0.05,
-          unit: 'spool',
-          materialType: 'supplies',
-        },
-        {
-          materialId: 3,
-          materialName: 'Edge Paint',
-          quantity: 0.02,
-          unit: 'bottle',
-          materialType: 'supplies',
-        },
-      ],
+        // Check availability of materials
+        const availabilityData =
+          await salesMaterialsService.checkMaterialAvailability(saleId);
 
-      // Bags
-      'Leather Tote': [
-        {
-          materialId: 1,
-          materialName: 'Vegetable Tanned Leather',
-          quantity: 4,
-          unit: 'sq ft',
-          materialType: 'leather',
-        },
-        {
-          materialId: 2,
-          materialName: 'Waxed Thread',
-          quantity: 0.5,
-          unit: 'spool',
-          materialType: 'supplies',
-        },
-        {
-          materialId: 4,
-          materialName: 'Magnetic Snaps',
-          quantity: 1,
-          unit: 'piece',
-          materialType: 'hardware',
-        },
-      ],
-      'Messenger Bag': [
-        {
-          materialId: 1,
-          materialName: 'Vegetable Tanned Leather',
-          quantity: 5,
-          unit: 'sq ft',
-          materialType: 'leather',
-        },
-        {
-          materialId: 2,
-          materialName: 'Waxed Thread',
-          quantity: 0.5,
-          unit: 'spool',
-          materialType: 'supplies',
-        },
-        {
-          materialId: 5,
-          materialName: 'Brass Buckles',
-          quantity: 2,
-          unit: 'piece',
-          materialType: 'hardware',
-        },
-        {
-          materialId: 6,
-          materialName: 'D-Rings',
-          quantity: 4,
-          unit: 'piece',
-          materialType: 'hardware',
-        },
-      ],
+        // Create a map of material IDs to their full details from context
+        const materialsMap = materials
+          ? new Map(materials.map((material) => [material.id, material]))
+          : new Map();
 
-      // Belts
-      'Leather Belt': [
-        {
-          materialId: 1,
-          materialName: 'Vegetable Tanned Leather',
-          quantity: 1,
-          unit: 'sq ft',
-          materialType: 'leather',
-        },
-        {
-          materialId: 2,
-          materialName: 'Waxed Thread',
-          quantity: 0.1,
-          unit: 'spool',
-          materialType: 'supplies',
-        },
-        {
-          materialId: 5,
-          materialName: 'Brass Buckles',
-          quantity: 1,
-          unit: 'piece',
-          materialType: 'hardware',
-        },
-      ],
+        // Transform the API response to our internal format
+        const materialRequirements: MaterialRequirement[] = saleMaterials.map(
+          (material) => {
+            // Get additional details from materials context if available
+            // Convert materialId to number to match the context map type
+            const materialId =
+              typeof material.materialId === 'string'
+                ? parseInt(material.materialId, 10)
+                : material.materialId || 0;
+            const contextMaterial = materialsMap.get(materialId);
+            const storageLocation =
+              material.location ||
+              (contextMaterial ? contextMaterial.storageLocation : undefined);
 
-      // Default/fallback for other products
-      default: [
-        {
-          materialId: 1,
-          materialName: 'Vegetable Tanned Leather',
-          quantity: 1,
-          unit: 'sq ft',
-          materialType: 'leather',
-        },
-        {
-          materialId: 2,
-          materialName: 'Waxed Thread',
-          quantity: 0.1,
-          unit: 'spool',
-          materialType: 'supplies',
-        },
-      ],
+            return {
+              materialId: materialId,
+              materialName: material.materialName,
+              quantity: material.quantity,
+              available: material.available || 0,
+              status:
+                (material.status as MaterialStatus) ||
+                MaterialStatus.OUT_OF_STOCK,
+              unit: material.unit?.toString() || 'piece',
+              storageLocation: storageLocation,
+              materialType: material.materialType.toString(),
+            };
+          }
+        );
+
+        // Update availability information based on the availability check
+        if (!availabilityData.allAvailable) {
+          const missingItemsMap = new Map(
+            availabilityData.missingItems.map((item) => {
+              // Ensure materialId is a number for consistent lookup
+              const materialId =
+                typeof item.materialId === 'string'
+                  ? parseInt(item.materialId, 10)
+                  : item.materialId || 0;
+              return [materialId, item];
+            })
+          );
+
+          materialRequirements.forEach((req) => {
+            // Convert materialId to number for consistent lookup
+            const materialId =
+              typeof req.materialId === 'string'
+                ? parseInt(req.materialId as string, 10)
+                : (req.materialId as number);
+
+            const missingItem = missingItemsMap.get(materialId);
+            if (missingItem) {
+              req.available = missingItem.available || 0;
+              req.status = MaterialStatus.OUT_OF_STOCK;
+            }
+          });
+        }
+
+        setRequirements(materialRequirements);
+      } catch (err) {
+        console.error('Error fetching material requirements:', err);
+        setError('Failed to load material requirements for this order');
+      } finally {
+        setLoading(false);
+      }
     };
 
-    // Aggregate material requirements from all items
-    const aggregatedMaterials: Record<string | number, MaterialRequirement> =
-      {};
-
-    sale.items.forEach((item) => {
-      const itemName = item.name;
-      const itemQuantity = item.quantity;
-
-      // Get material list for this product (or use default)
-      const materialList =
-        productMaterialMap[itemName] || productMaterialMap['default'];
-
-      materialList.forEach((material) => {
-        const totalQuantity = material.quantity * itemQuantity;
-
-        if (aggregatedMaterials[material.materialId]) {
-          // Add to existing material requirement
-          aggregatedMaterials[material.materialId].quantity += totalQuantity;
-        } else {
-          // Convert from MaterialDefinition to MaterialRequirement
-          aggregatedMaterials[material.materialId] = {
-            ...material,
-            quantity: totalQuantity,
-            available: 0, // Will be updated with actual inventory data
-            status: MaterialStatus.IN_STOCK, // Default value
-          };
-        }
-      });
-    });
-
-    // Add actual inventory data to the requirements
-    Object.values(aggregatedMaterials).forEach((requirement) => {
-      const materialInInventory = materials.find(
-        (m) => m.id === requirement.materialId
-      );
-      if (materialInInventory) {
-        requirement.available = materialInInventory.quantity;
-        requirement.status = materialInInventory.status;
-        requirement.storageLocation = materialInInventory.storageLocation;
-      } else {
-        requirement.available = 0;
-        requirement.status = MaterialStatus.OUT_OF_STOCK;
-      }
-    });
-
-    return Object.values(aggregatedMaterials);
-  };
+    fetchMaterialRequirements();
+  }, [sale, saleId, materials]);
 
   // Check if all materials are available
   const allMaterialsAvailable = requirements.every(
@@ -300,18 +139,31 @@ const MaterialRequirements: React.FC<MaterialRequirementsProps> = ({
       req.status === MaterialStatus.OUT_OF_STOCK || req.available < req.quantity
   );
 
+  // Handle creating purchase order
+  const handleCreatePurchaseOrder = () => {
+    // This would be implemented to navigate to purchase order creation
+    // or call an API to create purchase orders for missing items
+    alert(
+      'Create Purchase Order functionality will be implemented in a future phase'
+    );
+  };
+
   if (loading || materialsLoading) {
     return <LoadingSpinner />;
   }
 
   if (error) {
-    return <div className='bg-red-50 p-4 rounded-md text-red-800'>{error}</div>;
+    return <ErrorMessage message={error} />;
   }
 
   if (!sale) {
+    return <ErrorMessage message='Order not found' />;
+  }
+
+  if (requirements.length === 0) {
     return (
-      <div className='bg-red-50 p-4 rounded-md text-red-800'>
-        Order not found
+      <div className='p-4 text-center text-gray-500'>
+        <p>No material requirements found for this order.</p>
       </div>
     );
   }
@@ -520,6 +372,7 @@ const MaterialRequirements: React.FC<MaterialRequirementsProps> = ({
           type='button'
           className='inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500'
           onClick={onGeneratePickingList}
+          disabled={!allMaterialsAvailable}
         >
           Generate Picking List
         </button>
@@ -528,6 +381,7 @@ const MaterialRequirements: React.FC<MaterialRequirementsProps> = ({
           <button
             type='button'
             className='inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
+            onClick={handleCreatePurchaseOrder}
           >
             Create Purchase Order
           </button>

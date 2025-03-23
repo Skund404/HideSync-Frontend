@@ -1,179 +1,232 @@
 // src/types/allExports.ts
+/**
+ * This file consolidates and re-exports all types from multiple modules
+ * for easier importing across the application.
+ */
 
-// Gather all imports at the top of the file
 import {
-  CommunicationChannel,
-  CommunicationType,
-  ComponentType,
-  CustomerSource,
-  CustomerStatus,
-  CustomerTier,
-  EdgeFinishType,
-  HardwareFinish,
-  HardwareMaterial as HardwareMaterialEnum,
-  HardwareType,
-  InventoryAdjustmentType,
-  InventoryStatus,
-  LeatherFinish,
-  LeatherType,
-  MaterialQualityGrade,
+  HardwareMaterial,
+  HardwareSubtype,
+  isHardwareMaterial,
+  isLeatherMaterial,
+  isSuppliesMaterial,
+  LeatherMaterial,
+  LeatherSubtype,
+  Material,
+  MaterialCreatePayload,
+  MaterialQuality,
+  MaterialStatus,
   MaterialType,
   MeasurementUnit,
+  SuppliesMaterial,
+} from './materialTypes';
+
+import {
+  SectionType as StorageSectionType,
+  StorageLocation,
+  StorageLocationType,
+  StorageUtilization,
+} from './storage';
+
+import {
+  Component,
+  ComponentMaterial,
+  PatternFileType,
+  PatternFilters,
+} from './patternTypes';
+
+import { ProjectFilter } from './projectTypes';
+
+import { ProjectTemplate, TemplateCategory } from './projectTemplate';
+
+import {
+  DayOfWeek,
+  RecurrenceFrequency,
+  RecurringProject,
+} from './recurringProject';
+
+import { Tool, ToolCategory, ToolStatus } from './toolType';
+
+import {
+  ComponentType,
+  CustomerStatus,
+  CustomerTier,
+  InventoryStatus,
   PaymentStatus,
   PickingListStatus,
   ProjectStatus,
   ProjectType,
-  PurchaseStatus,
-  QualityGrade,
   SaleStatus,
-  SkillLevel,
-  StorageLocationType,
-  SupplierStatus,
-  ToolCategory,
   ToolListStatus,
-  ToolType,
-  TransactionType,
 } from './enums';
 
-// Utility functions for enums
-export function getEnumValues<T extends Record<string, string>>(
-  enumObj: T
-): Array<string> {
-  return Object.values(enumObj);
+import {
+  PickingList,
+  PickingListFilters,
+  PickingListItem,
+  PickingListItemStatus,
+} from './pickingListTypes';
+
+import {
+  PurchaseOrder,
+  PurchaseOrderFilters,
+  PurchaseOrderItem,
+} from './purchaseTypes';
+
+import { Supplier, SupplierFilters } from './supplierTypes';
+
+import { Customer, Sale, SalesFilters, SalesItem } from './salesTypes';
+
+// Material Types
+export { MaterialType };
+export { MaterialStatus };
+export { LeatherSubtype };
+export { HardwareSubtype };
+export { isLeatherMaterial };
+export { isHardwareMaterial };
+export { isSuppliesMaterial };
+export type { Material };
+export type { LeatherMaterial };
+export type { HardwareMaterial };
+export type { SuppliesMaterial };
+export type { MaterialQuality };
+export type { MaterialCreatePayload };
+export { MeasurementUnit };
+// Storage Types
+export type { StorageLocation };
+export type { StorageUtilization };
+export { StorageLocationType };
+export { StorageSectionType };
+// Pattern Types
+export type { Component };
+export { PatternFileType };
+export type { PatternFilters };
+export type { ComponentMaterial };
+export { ComponentType };
+// Project Types
+export { ProjectStatus };
+export { ProjectType };
+export type { ProjectFilter };
+export type { ProjectTemplate };
+export { TemplateCategory };
+export type { RecurringProject };
+export { RecurrenceFrequency };
+export { DayOfWeek };
+// Tool Types
+export type { Tool };
+export { ToolCategory };
+export { ToolStatus };
+export { ToolListStatus };
+// Status Enums
+export { SaleStatus };
+export { PaymentStatus };
+export { CustomerStatus };
+export { CustomerTier };
+export { InventoryStatus };
+export { PickingListStatus };
+export { PickingListItemStatus };
+// Picking List Types
+export type { PickingList };
+export type { PickingListItem };
+export type { PickingListFilters };
+// Purchase Types
+export type { PurchaseOrder };
+export type { PurchaseOrderItem };
+export type { PurchaseOrderFilters };
+// Supplier Types
+export type { Supplier };
+export type { SupplierFilters };
+// Sales Types
+export type { SalesItem };
+export type { SalesFilters };
+export type { Sale };
+export type { Customer };
+
+// Additional utility types
+export interface ApiResponse<T = any> {
+  data: T;
+  status: string;
+  message?: string;
+  pagination?: {
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  };
 }
 
-export function isValidEnumValue<T extends Record<string, string>>(
-  enumObj: T,
-  value: string
-): value is T[keyof T] {
-  return Object.values(enumObj).includes(value as T[keyof T]);
+export interface ApiError {
+  status: number;
+  message: string;
+  details?: any;
 }
 
-// Enum Exports - available at runtime
-export {
-  SaleStatus,
-  PaymentStatus,
-  PurchaseStatus,
-
-  // Customer-related
-  CustomerStatus,
-  CustomerTier,
-  CustomerSource,
-
-  // Inventory and Material Management
-  InventoryStatus,
-  MaterialType,
-  MaterialQualityGrade,
-  HardwareType,
-  HardwareMaterialEnum,
-  HardwareFinish,
-  LeatherType,
-  LeatherFinish,
-
-  // Project Management
-  ProjectType,
-  ProjectStatus,
-  SkillLevel,
-  ComponentType,
-
-  // Tools and Crafting
-  ToolCategory,
-  ToolType,
-  EdgeFinishType,
-
-  // Transactions and Inventory
-  TransactionType,
-  InventoryAdjustmentType,
-  SupplierStatus,
-  StorageLocationType,
-  MeasurementUnit,
-  QualityGrade,
-  PickingListStatus,
-  ToolListStatus,
-
-  // Communication
-  CommunicationChannel,
-  CommunicationType,
-};
-
-// Types and Interfaces (to be defined based on your specific requirements)
-export interface Material {
-  type: MaterialType;
-  quality: MaterialQualityGrade;
-  // Add other relevant properties
+// Type for component props that include a refresh callback
+export interface RefreshableProps {
+  onRefresh?: () => void;
 }
 
-export interface LeatherMaterial extends Material {
-  leatherType: LeatherType;
-  finish: LeatherFinish;
-  // Add leather-specific properties
+// Common filter interfaces
+export interface DateRangeFilter {
+  startDate?: string;
+  endDate?: string;
 }
 
-export interface HardwareMaterial extends Material {
-  hardwareType: HardwareType;
-  materialType: HardwareMaterialEnum; // Fixed to use the enum rather than self-reference
-  finish: HardwareFinish;
-  // Add hardware-specific properties
+export interface PaginationParams {
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortDirection?: 'asc' | 'desc';
 }
 
-export interface SuppliesMaterial extends Material {
-  // Add supplies-specific properties
+export interface CommonFilters extends PaginationParams, DateRangeFilter {
+  search?: string;
+  status?: string;
 }
 
-// Storage-related types (placeholders - modify as needed)
-export interface StorageLocation {
+// Tagged template types
+export interface TemplateTag {
   id: string;
-  type: StorageLocationType;
-  // Add other relevant properties
+  name: string;
+  color: string;
 }
 
-export interface StorageCell {
-  location: StorageLocation;
-  // Add other relevant properties
+// Template material type
+export interface TemplateMaterial {
+  id: string | number;
+  materialId: string | number;
+  templateId: string | number;
+  name: string;
+  materialType: MaterialType;
+  quantity: number;
+  unit: MeasurementUnit;
+  notes?: string;
+  isRequired: boolean;
+  // Note: alternatives property missing from interface
+  // If needed, add: alternatives?: TemplateMaterialAlternative[];
 }
 
-export interface StorageAssignment {
-  material: Material;
-  location: StorageLocation;
-  // Add other relevant properties
+// Type for material alternatives (if implemented)
+export interface TemplateMaterialAlternative {
+  id: string | number;
+  templateMaterialId: string | number;
+  materialId: string | number;
+  name: string;
+  materialType: MaterialType;
+  priority: number;
 }
 
-export interface StorageMove {
-  from: StorageLocation;
-  to: StorageLocation;
-  material: Material;
-  // Add other relevant properties
+// Type for form elements that can have validation errors
+export interface FormValidation {
+  isValid: boolean;
+  errors: Record<string, string>;
+  touched: Record<string, boolean>;
 }
 
-export interface StorageUtilization {
-  location: StorageLocation;
-  occupiedSpace: number;
-  totalSpace: number;
-  // Add other relevant properties
-}
-
-export interface ItemStorageHistory {
-  material: Material;
-  locations: StorageLocation[];
-  // Add other relevant properties
-}
-
-// Placeholder interfaces for core business models
-export interface Project {
-  id: string;
-  type: ProjectType;
-  status: ProjectStatus;
-  // Add other relevant properties
-}
-
-export interface Purchase {
-  id: string;
-  status: PurchaseStatus;
-  // Add other relevant properties
-}
-
-export interface Sale {
-  id: string;
-  status: SaleStatus;
-  // Add other relevant properties
+// Type for select options
+export interface SelectOption {
+  value: string;
+  label: string;
+  disabled?: boolean;
+  group?: string;
 }

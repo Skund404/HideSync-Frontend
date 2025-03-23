@@ -1,192 +1,306 @@
 // src/utils/materialHelpers.ts
 import {
-  AnimalSource,
   HardwareMaterial,
-  HardwareType,
+  HardwareSubtype,
+  isHardwareMaterial,
+  isLeatherMaterial,
+  isSuppliesMaterial,
   LeatherMaterial,
-  LeatherType,
+  LeatherSubtype,
   Material,
+  MaterialCreatePayload,
+  MaterialQuality,
   MaterialStatus,
   MaterialType,
   MeasurementUnit,
   SuppliesMaterial,
-  TannageType,
+  SuppliesSubtype,
 } from '@/types/materialTypes';
 
-// Type for filter options
-export interface MaterialFilterOptions {
-  searchQuery?: string;
-  filterType?: string | null;
-  filterMaterial?: string | null;
-  filterFinish?: string | null;
-  filterStatus?: string | null;
-  filterStorage?: string | null;
-  filterSupplier?: string | null;
-
-  // Leather-specific filters
-  filterLeatherType?: LeatherType | null;
-  filterTannage?: TannageType | null;
-  filterAnimalSource?: AnimalSource | null;
-  filterThickness?: string | null;
-  filterGrade?: string | null;
-  filterColor?: string | null;
-
-  // Hardware-specific filters
-  filterHardwareType?: HardwareType | null;
-  filterHardwareMaterial?: string | null;
-  filterSize?: string | null;
-
-  // Supplies-specific filters
-  filterSuppliesType?: string | null;
-  filterComposition?: string | null;
+/**
+ * Generic option interface for dropdowns and selectors
+ */
+export interface SelectOption {
+  value: string;
+  label: string;
 }
 
 /**
- * Filter materials based on provided filters
+ * Format a type string for display (convert snake_case to Title Case)
+ * @param type The type string to format
+ * @returns Formatted type string
  */
-export const filterMaterials = (
-  materials: Material[],
-  filters: MaterialFilterOptions = {}
-): Material[] => {
-  if (!materials || !materials.length) return [];
-  if (!filters || Object.keys(filters).length === 0) return materials;
+export const formatType = (type: string | undefined): string => {
+  if (!type) return 'Unknown';
 
-  const {
-    searchQuery = '',
-    filterType = null,
-    filterMaterial = null,
-    filterFinish = null,
-    filterStatus = null,
-    filterStorage = null,
-    filterSupplier = null,
-    filterLeatherType = null,
-    filterTannage = null,
-    filterAnimalSource = null,
-    filterThickness = null,
-    filterHardwareType = null,
-    filterHardwareMaterial = null,
-    filterSuppliesType = null,
-  } = filters;
-
-  return materials.filter((material) => {
-    // Search query filtering - check name and description
-    if (
-      searchQuery &&
-      !(
-        material.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (material.description &&
-          material.description
-            .toLowerCase()
-            .includes(searchQuery.toLowerCase()))
-      )
-    ) {
-      return false;
-    }
-
-    // Common filters
-    if (filterType && material.materialType !== filterType) {
-      return false;
-    }
-
-    if (filterStatus && material.status !== filterStatus) {
-      return false;
-    }
-
-    if (filterStorage && material.storageLocation !== filterStorage) {
-      return false;
-    }
-
-    if (filterSupplier && material.supplier !== filterSupplier) {
-      return false;
-    }
-
-    // Material-specific filtering
-    if (material.materialType === MaterialType.LEATHER) {
-      const leatherMaterial = material as LeatherMaterial;
-
-      if (
-        filterLeatherType &&
-        leatherMaterial.leatherType !== filterLeatherType
-      ) {
-        return false;
-      }
-
-      if (filterTannage && leatherMaterial.tannage !== filterTannage) {
-        return false;
-      }
-
-      if (
-        filterAnimalSource &&
-        leatherMaterial.animalSource !== filterAnimalSource
-      ) {
-        return false;
-      }
-
-      if (filterFinish && leatherMaterial.finish !== filterFinish) {
-        return false;
-      }
-
-      if (filterThickness) {
-        // Check if thickness matches a range or exact value
-        const [min, max] = filterThickness.split('-').map(Number);
-        if (min && max) {
-          if (
-            leatherMaterial.thickness < min ||
-            leatherMaterial.thickness > max
-          ) {
-            return false;
-          }
-        } else if (min && leatherMaterial.thickness !== min) {
-          return false;
-        }
-      }
-    } else if (material.materialType === MaterialType.HARDWARE) {
-      const hardwareMaterial = material as HardwareMaterial;
-
-      if (
-        filterHardwareType &&
-        hardwareMaterial.hardwareType !== filterHardwareType
-      ) {
-        return false;
-      }
-
-      if (
-        filterHardwareMaterial &&
-        hardwareMaterial.hardwareMaterial !== filterHardwareMaterial
-      ) {
-        return false;
-      }
-
-      if (filterFinish && hardwareMaterial.finish !== filterFinish) {
-        return false;
-      }
-    } else if (material.materialType === MaterialType.SUPPLIES) {
-      const suppliesMaterial = material as SuppliesMaterial;
-
-      if (
-        filterSuppliesType &&
-        suppliesMaterial.suppliesMaterialType !== filterSuppliesType
-      ) {
-        return false;
-      }
-
-      if (
-        filterMaterial &&
-        suppliesMaterial.materialComposition !== filterMaterial
-      ) {
-        return false;
-      }
-    }
-
-    return true;
-  });
+  return type
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (match) => match.toUpperCase());
 };
 
 /**
- * Get color hex code from color name
+ * Get a color class for the status label based on material status
+ * @param status Material status
+ * @returns CSS class string
  */
-export const getColorHex = (colorName: string): string => {
-  // Define a common color map
+export const getStatusColorClass = (status: MaterialStatus): string => {
+  switch (status) {
+    case MaterialStatus.IN_STOCK:
+      return 'bg-green-100 text-green-800';
+    case MaterialStatus.LOW_STOCK:
+      return 'bg-yellow-100 text-yellow-800';
+    case MaterialStatus.OUT_OF_STOCK:
+      return 'bg-red-100 text-red-800';
+    case MaterialStatus.RESERVED:
+      return 'bg-blue-100 text-blue-800';
+    case MaterialStatus.DISCONTINUED:
+      return 'bg-gray-100 text-gray-800';
+    default:
+      return 'bg-gray-100 text-gray-800';
+  }
+};
+
+/**
+ * Get status color for general UI elements
+ * @param status Material status
+ * @returns CSS color class
+ */
+export const getStatusColor = (status: MaterialStatus): string => {
+  switch (status) {
+    case MaterialStatus.IN_STOCK:
+      return 'bg-green-100 text-green-800';
+    case MaterialStatus.LOW_STOCK:
+      return 'bg-yellow-100 text-yellow-800';
+    case MaterialStatus.OUT_OF_STOCK:
+      return 'bg-red-100 text-red-800';
+    case MaterialStatus.RESERVED:
+      return 'bg-blue-100 text-blue-800';
+    case MaterialStatus.IN_PRODUCTION:
+      return 'bg-purple-100 text-purple-800';
+    case MaterialStatus.DISCONTINUED:
+      return 'bg-gray-100 text-gray-800';
+    default:
+      return 'bg-gray-100 text-gray-800';
+  }
+};
+
+/**
+ * Determine if a material is low on stock
+ * @param material Material to check
+ * @returns True if material is low on stock
+ */
+export const isLowStock = (material: Material): boolean => {
+  if (!material || !material.quantity) return false;
+
+  // If reorder point is defined, check against it
+  if (material.reorderPoint !== undefined) {
+    return material.quantity <= material.reorderPoint;
+  }
+
+  // Default low stock condition (20% of usual stock)
+  return material.status === MaterialStatus.LOW_STOCK;
+};
+
+/**
+ * Get a human-readable display name for a material
+ * @param material The material object
+ * @returns Formatted display name
+ */
+export const getMaterialDisplayName = (material: Material): string => {
+  if (!material) return '';
+
+  let details = '';
+
+  if (isLeatherMaterial(material)) {
+    details = material.thickness ? `${material.thickness}mm` : '';
+    if (material.subtype) {
+      details = details ? `${material.subtype} ${details}` : material.subtype;
+    }
+  } else if (isHardwareMaterial(material)) {
+    details = material.size || '';
+    if (material.subtype) {
+      details = details ? `${material.subtype} ${details}` : material.subtype;
+    }
+  } else if (isSuppliesMaterial(material)) {
+    if (material.subtype) {
+      details = material.subtype;
+    }
+  }
+
+  return details ? `${material.name} (${details})` : material.name;
+};
+
+/**
+ * Format supplier information for a material
+ * @param material The material object
+ * @returns Formatted supplier string
+ */
+export const getSupplierInfo = (material: Material): string => {
+  if (!material) return '';
+
+  if (material.supplierId) {
+    return `${material.supplierId}${
+      material.supplierSku ? ` - ${material.supplierSku}` : ''
+    }`;
+  }
+
+  return '';
+};
+
+/**
+ * Format price for display
+ * @param price Price value
+ * @param currency Currency code (default: USD)
+ * @returns Formatted price string
+ */
+export const formatPrice = (
+  price?: number,
+  currency: string = 'USD'
+): string => {
+  if (price === undefined || price === null) {
+    return '-';
+  }
+
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+  }).format(price);
+};
+
+/**
+ * Format material quantity and unit for display
+ * @param quantity Material quantity
+ * @param unit Measurement unit
+ * @returns Formatted string
+ */
+export const formatQuantity = (
+  quantity: number,
+  unit: MeasurementUnit
+): string => {
+  const unitLabel = unit.toString().toLowerCase().replace('_', ' ');
+  return `${quantity} ${unitLabel}${
+    quantity !== 1 && !unitLabel.endsWith('s') ? 's' : ''
+  }`;
+};
+
+/**
+ * Get descriptive details for a leather material
+ * @param material The leather material
+ * @returns Array of detail strings
+ */
+export const getLeatherDetails = (material: LeatherMaterial): string[] => {
+  const details: string[] = [];
+
+  if (material.subtype) {
+    details.push(`Type: ${material.subtype}`);
+  }
+
+  if (material.thickness) {
+    details.push(`Thickness: ${material.thickness}mm`);
+  }
+
+  if (material.tannage) {
+    details.push(`Tannage: ${material.tannage}`);
+  }
+
+  if (material.animalSource) {
+    details.push(`Source: ${material.animalSource}`);
+  }
+
+  if (material.color) {
+    details.push(`Color: ${material.color}`);
+  }
+
+  if (material.finish) {
+    details.push(`Finish: ${material.finish}`);
+  }
+
+  if (material.grade) {
+    details.push(`Grade: ${material.grade}`);
+  }
+
+  return details;
+};
+
+/**
+ * Get descriptive details for a hardware material
+ * @param material The hardware material
+ * @returns Array of detail strings
+ */
+export const getHardwareDetails = (material: HardwareMaterial): string[] => {
+  const details: string[] = [];
+
+  if (material.subtype) {
+    details.push(`Type: ${material.subtype}`);
+  }
+
+  if (material.hardwareMaterial) {
+    details.push(`Material: ${material.hardwareMaterial}`);
+  }
+
+  if (material.size) {
+    details.push(`Size: ${material.size}`);
+  }
+
+  if (material.finish) {
+    details.push(`Finish: ${material.finish}`);
+  }
+
+  if (material.color) {
+    details.push(`Color: ${material.color}`);
+  }
+
+  return details;
+};
+
+/**
+ * Get descriptive details for a supplies material
+ * @param material The supplies material
+ * @returns Array of detail strings
+ */
+export const getSuppliesDetails = (material: SuppliesMaterial): string[] => {
+  const details: string[] = [];
+
+  if (material.subtype) {
+    details.push(`Type: ${material.subtype}`);
+  }
+
+  if (material.threadType) {
+    details.push(`Thread Type: ${material.threadType}`);
+  }
+
+  if (material.adhesiveType) {
+    details.push(`Adhesive Type: ${material.adhesiveType}`);
+  }
+
+  if (material.composition) {
+    details.push(`Composition: ${material.composition}`);
+  }
+
+  if (material.color) {
+    details.push(`Color: ${material.color}`);
+  }
+
+  if (material.volume) {
+    details.push(`Volume: ${material.volume}ml`);
+  }
+
+  if (material.length) {
+    details.push(`Length: ${material.length}m`);
+  }
+
+  return details;
+};
+
+/**
+ * Get color hex value from a color name
+ * @param colorName The color name
+ * @returns Hex color code
+ */
+export const getColorHex = (colorName?: string): string => {
+  if (!colorName) return '#CCCCCC';
+
   const colorMap: Record<string, string> = {
     natural: '#D2B48C',
     tan: '#D2B48C',
@@ -206,16 +320,19 @@ export const getColorHex = (colorName: string): string => {
     gray: '#808080',
     silver: '#C0C0C0',
     olive: '#808000',
-    clear: '#FFFFFF',
   };
 
-  return colorMap[colorName?.toLowerCase()] || '#D2B48C'; // Default to tan if color not found
+  return colorMap[colorName.toLowerCase()] || '#CCCCCC';
 };
 
 /**
- * Get hardware material color
+ * Get hardware material color for display
+ * @param material Hardware material type
+ * @returns Hex color code
  */
-export const getHardwareMaterialColor = (material: string): string => {
+export const getHardwareMaterialColor = (material?: string): string => {
+  if (!material) return '#CCCCCC';
+
   const materialColorMap: Record<string, string> = {
     brass: '#B5A642',
     nickel: '#C0C0C0',
@@ -229,197 +346,156 @@ export const getHardwareMaterialColor = (material: string): string => {
     gold: '#FFD700',
   };
 
-  return materialColorMap[material?.toLowerCase()] || '#C0C0C0'; // Default to silver
+  return materialColorMap[material.toLowerCase()] || '#CCCCCC';
 };
 
 /**
- * Format status for display
+ * Calculate material value based on quantity and price
+ * @param material Material to calculate value for
+ * @returns Calculated value
  */
-export const formatStatus = (status: string): string => {
-  if (!status) return '-';
+export const calculateMaterialValue = (material: Material): number => {
+  if (!material) return 0;
 
-  return status
-    .replace(/_/g, ' ')
-    .toLowerCase()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  const price = material.costPrice || 0;
+  return material.quantity * price;
 };
 
 /**
- * Get color class for material status tag
+ * Get options for material type dropdown
+ * @returns Array of select options
  */
-export function getStatusColorClass(status: MaterialStatus): string {
-  switch (status) {
-    case MaterialStatus.IN_STOCK:
-      return 'bg-green-100 text-green-800';
-    case MaterialStatus.LOW_STOCK:
-      return 'bg-amber-100 text-amber-800';
-    case MaterialStatus.OUT_OF_STOCK:
-      return 'bg-red-100 text-red-800';
-    case MaterialStatus.ON_ORDER:
-      return 'bg-blue-100 text-blue-800';
-    case MaterialStatus.DISCONTINUED:
-      return 'bg-gray-100 text-gray-800';
-    default:
-      return 'bg-gray-100 text-gray-800';
-  }
-}
+export const getMaterialTypeOptions = (): SelectOption[] => {
+  return [
+    { value: MaterialType.LEATHER, label: 'Leather' },
+    { value: MaterialType.HARDWARE, label: 'Hardware' },
+    { value: MaterialType.SUPPLIES, label: 'Supplies' },
+  ];
+};
 
 /**
- * Get status color for use in components (just the color, not the full class)
+ * Get options for measurement units dropdown
+ * @param materialType Type of material
+ * @returns Array of select options filtered by material type
  */
-export function getStatusColor(status: MaterialStatus): string {
-  switch (status) {
-    case MaterialStatus.IN_STOCK:
-      return 'green';
-    case MaterialStatus.LOW_STOCK:
-      return 'amber';
-    case MaterialStatus.OUT_OF_STOCK:
-      return 'red';
-    case MaterialStatus.ON_ORDER:
-      return 'blue';
-    case MaterialStatus.DISCONTINUED:
-      return 'gray';
-    default:
-      return 'gray';
-  }
-}
+export const getMeasurementUnitOptions = (
+  materialType?: MaterialType
+): SelectOption[] => {
+  const allOptions = Object.entries(MeasurementUnit).map(([key, value]) => ({
+    value,
+    label: key.charAt(0) + key.slice(1).toLowerCase().replace(/_/g, ' '),
+  }));
 
-/**
- * Get material icon based on material type
- */
-export function getMaterialIcon(type: MaterialType): string {
-  switch (type) {
+  if (!materialType) {
+    return allOptions;
+  }
+
+  // Filter options based on material type
+  switch (materialType) {
     case MaterialType.LEATHER:
-      return `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M20 12a8 8 0 01-8 8m0 0a8 8 0 01-8-8m16 0a8 8 0 10-16 0m16 0c0 2.183-.87 4.2-2.3 5.657A12.087 12.087 0 0112 18a12.087 12.087 0 01-5.7-1.343A8.012 8.012 0 012 12" />
-      </svg>`;
+      return allOptions.filter((option) =>
+        [
+          MeasurementUnit.SQUARE_FOOT,
+          MeasurementUnit.SQUARE_METER,
+          MeasurementUnit.PIECE,
+          MeasurementUnit.HIDE,
+        ].includes(option.value as MeasurementUnit)
+      );
     case MaterialType.HARDWARE:
-      return `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
-      </svg>`;
+      return allOptions.filter((option) =>
+        [
+          MeasurementUnit.PIECE,
+          MeasurementUnit.PAIR,
+          MeasurementUnit.PACK,
+          MeasurementUnit.BOX,
+        ].includes(option.value as MeasurementUnit)
+      );
     case MaterialType.SUPPLIES:
-      return `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
-      </svg>`;
-    case MaterialType.THREAD:
-    case MaterialType.WAXED_THREAD:
-      return `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>`;
+      return allOptions.filter((option) =>
+        [
+          MeasurementUnit.SPOOL,
+          MeasurementUnit.BOTTLE,
+          MeasurementUnit.METER,
+          MeasurementUnit.PIECE,
+          MeasurementUnit.LITER,
+        ].includes(option.value as MeasurementUnit)
+      );
     default:
-      return `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
-      </svg>`;
+      return allOptions;
   }
-}
+};
 
 /**
- * Format quantity with appropriate unit
+ * Get options for material quality dropdown
+ * @returns Array of select options
  */
-export function formatQuantity(
-  quantity: number,
-  unit?: MeasurementUnit | string
-): string {
-  if (!unit) return `${quantity}`;
-
-  // For special units like "pair" or "piece", handle pluralization
-  if (typeof unit === 'string') {
-    const pluralUnits = [
-      'piece',
-      'pair',
-      'set',
-      'pack',
-      'bottle',
-      'tube',
-      'jar',
-      'can',
-      'roll',
-      'tin',
-      'shoulder',
-      'bend',
-    ];
-    if (pluralUnits.includes(unit) && quantity !== 1) {
-      return `${quantity} ${unit}s`;
-    }
-    return `${quantity} ${unit}`;
-  }
-
-  return `${quantity} ${unit}`;
-}
+export const getMaterialQualityOptions = (): SelectOption[] => {
+  return Object.entries(MaterialQuality).map(([key, value]) => ({
+    value,
+    label: key.charAt(0) + key.slice(1).toLowerCase().replace(/_/g, ' '),
+  }));
+};
 
 /**
- * Calculate if material is low in stock based on reorder point
+ * Format a string to title case
+ * @param str Input string
+ * @returns Title cased string
  */
-export function isLowStock(material: Material): boolean {
-  if (!material.reorderPoint) return false;
-  return material.quantity <= material.reorderPoint;
-}
-
-/**
- * Format type name for display (convert SNAKE_CASE to Title Case)
- */
-export function formatType(type: string): string {
-  if (!type) return '';
-  return type
-    .split('_')
+export const toTitleCase = (str: string): string => {
+  return str
+    .replace(/_/g, ' ')
+    .split(' ')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(' ');
-}
-
-/**
- * Format price with appropriate currency symbol
- */
-export function formatPrice(price?: number, currency: string = '$'): string {
-  if (price === undefined || price === null) return 'N/A';
-  return `${currency}${price.toFixed(2)}`;
-}
-
-/**
- * Calculate total value of inventory for a material
- */
-export function calculateInventoryValue(material: Material): number {
-  if (!material.cost || material.cost <= 0) return 0;
-  return material.quantity * material.cost;
-}
-
-/**
- * Determine appropriate unit label based on material type
- */
-export function getUnitLabel(material: Material): string {
-  if (!material.unit) {
-    switch (material.materialType) {
-      case MaterialType.LEATHER:
-        return 'sq ft';
-      case MaterialType.HARDWARE:
-        return 'pcs';
-      case MaterialType.SUPPLIES:
-        return 'units';
-      default:
-        return 'items';
-    }
-  }
-  // Fix the toString issue by casting to string directly
-  return typeof material.unit === 'string'
-    ? material.unit
-    : String(material.unit);
-}
-
-// Create a named exports object to fix the ESLint anonymous default export warning
-export const materialHelpers = {
-  filterMaterials,
-  getStatusColorClass,
-  getStatusColor,
-  getMaterialIcon,
-  formatQuantity,
-  isLowStock,
-  formatType,
-  formatPrice,
-  calculateInventoryValue,
-  getUnitLabel,
-  getColorHex,
-  getHardwareMaterialColor,
-  formatStatus,
 };
 
-// Export it as default
-export default materialHelpers;
+/**
+ * Initialize a new material object with default values
+ * @param type Material type
+ * @returns New material object
+ */
+export const createInitialMaterial = (
+  type: MaterialType
+): MaterialCreatePayload => {
+  const baseProperties = {
+    name: '',
+    materialType: type,
+    quantity: 0,
+    unit: MeasurementUnit.PIECE,
+    status: MaterialStatus.IN_STOCK,
+    quality: MaterialQuality.STANDARD,
+  };
+
+  switch (type) {
+    case MaterialType.LEATHER:
+      return {
+        ...baseProperties,
+        materialType: MaterialType.LEATHER,
+        subtype: LeatherSubtype.FULL_GRAIN,
+        thickness: 2.0,
+        animalSource: 'cowhide',
+        tannage: 'vegetable',
+      } as MaterialCreatePayload;
+
+    case MaterialType.HARDWARE:
+      return {
+        ...baseProperties,
+        materialType: MaterialType.HARDWARE,
+        subtype: HardwareSubtype.BUCKLE,
+        hardwareMaterial: 'brass',
+        size: 'medium',
+      } as MaterialCreatePayload;
+
+    case MaterialType.SUPPLIES:
+      return {
+        ...baseProperties,
+        materialType: MaterialType.SUPPLIES,
+        subtype: SuppliesSubtype.THREAD,
+        volume: 0,
+        length: 0,
+      } as MaterialCreatePayload;
+
+    default:
+      return baseProperties as MaterialCreatePayload;
+  }
+};

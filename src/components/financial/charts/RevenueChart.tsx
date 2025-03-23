@@ -1,3 +1,4 @@
+// src/components/financial/charts/RevenueChart.tsx
 import React from 'react';
 import {
   Area,
@@ -11,29 +12,47 @@ import {
 } from 'recharts';
 import { useFinancial } from '../../../context/FinancialContext';
 import { formatCurrency } from '../../../utils/financialHelpers';
+import LoadingSpinner from '../../common/LoadingSpinner';
+import ErrorMessage from '../../common/ErrorMessage';
 
 const RevenueChart: React.FC = () => {
-  const { revenueTrends, loading } = useFinancial();
+  const { revenueTrends, loading, loadingState, error, refreshData } = useFinancial();
 
-  if (loading) {
+  // Specific loading state for this component
+  if (loading || loadingState.revenueTrends) {
     return (
       <div className='flex items-center justify-center h-full'>
-        <div className='text-center'>
-          <div className='inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-600'></div>
-          <p className='mt-2 text-sm text-stone-500'>Loading chart data...</p>
-        </div>
+        <LoadingSpinner
+          size="medium"
+          color="amber"
+          message="Loading revenue data..."
+        />
       </div>
     );
   }
 
+  // Handle error state with retry option
+  if (error) {
+    return (
+      <div className='flex items-center justify-center h-full'>
+        <ErrorMessage 
+          message="Unable to load revenue data. Please try again." 
+          onRetry={refreshData} 
+        />
+      </div>
+    );
+  }
+
+  // Handle empty data state
   if (!revenueTrends.length) {
     return (
       <div className='flex items-center justify-center h-full'>
-        <p className='text-stone-500'>No revenue data available</p>
+        <p className='text-stone-500'>No revenue data available for the selected period</p>
       </div>
     );
   }
 
+  // Custom tooltip for the chart
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (

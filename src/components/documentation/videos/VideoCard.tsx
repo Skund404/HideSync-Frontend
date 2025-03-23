@@ -1,3 +1,4 @@
+// src/components/documentation/videos/VideoCard.tsx
 import { Clock, ExternalLink } from 'lucide-react';
 import React from 'react';
 import { VideoResource } from '../../../types/documentationTypes';
@@ -16,12 +17,12 @@ const VideoCard: React.FC<VideoCardProps> = ({ video, onClick }) => {
   const thumbnailUrl = `https://img.youtube.com/vi/${video.videoId}/${
     video.thumbnailQuality || 'hqdefault'
   }.jpg`;
-
+  
   // External link to YouTube
   const youtubeUrl = `https://www.youtube.com/watch?v=${video.videoId}${
     video.startTime ? `&t=${video.startTime}` : ''
   }`;
-
+  
   return (
     <div className='video-card bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow'>
       <div
@@ -33,7 +34,6 @@ const VideoCard: React.FC<VideoCardProps> = ({ video, onClick }) => {
           alt={video.title}
           className='w-full h-full object-cover transition-transform hover:scale-105'
         />
-
         <div className='absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity'>
           <div className='w-16 h-16 bg-amber-600 rounded-full flex items-center justify-center'>
             <svg
@@ -47,7 +47,6 @@ const VideoCard: React.FC<VideoCardProps> = ({ video, onClick }) => {
             </svg>
           </div>
         </div>
-
         {video.duration && (
           <div className='absolute bottom-2 right-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded flex items-center'>
             <Clock size={12} className='mr-1' />
@@ -55,16 +54,13 @@ const VideoCard: React.FC<VideoCardProps> = ({ video, onClick }) => {
           </div>
         )}
       </div>
-
       <div className='p-4'>
         <h3 className='font-medium text-gray-900 mb-1'>{video.title}</h3>
-
         {video.description && (
           <p className='text-sm text-gray-600 mb-2 line-clamp-2'>
             {video.description}
           </p>
         )}
-
         {video.resourceId && (
           <div className='flex justify-between items-center text-xs'>
             <a
@@ -73,7 +69,6 @@ const VideoCard: React.FC<VideoCardProps> = ({ video, onClick }) => {
             >
               View Documentation
             </a>
-
             <a
               href={youtubeUrl}
               target='_blank'

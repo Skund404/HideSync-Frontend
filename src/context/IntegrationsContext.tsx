@@ -6,23 +6,29 @@ import React, {
   useEffect,
   useState,
 } from 'react';
-import {
-  fetchOrdersFromPlatform,
-  getIntegrationConfigs,
-  IntegrationConfigs,
-  PlatformAuthConfig,
-  removePlatformConfig,
-  updatePlatformConfig,
-} from '../services/integrations/platformIntegration';
 import { SalesChannel } from '../types/salesTypes';
-import { decryptData, encryptData } from '../utils/securityHelpers';
+import {
+  PlatformIntegration,
+  SyncEvent,
+  getIntegrations,
+  createIntegration,
+  updateIntegration,
+  deleteIntegration,
+  syncOrders,
+  generateAuthUrl,
+  exchangeAuthCode,
+  testIntegrationConnection,
+  OAuthConfig,
+} from '../services/integrations/integration-service';
+import { ApiError } from '../services/api-client';
 
 // Define the shape of our context
 interface IntegrationsContextType {
-  configs: IntegrationConfigs;
+  integrations: PlatformIntegration[];
   isLoading: boolean;
+  error: string | null;
   syncStatus: Record<
-    SalesChannel,
+    string,
     {
       isSyncing: boolean;
       lastSynced: Date | null;
@@ -31,38 +37,37 @@ interface IntegrationsContextType {
   >;
   connectPlatform: (
     platform: SalesChannel,
-    config: PlatformAuthConfig
-  ) => Promise<void>;
-  disconnectPlatform: (platform: SalesChannel) => Promise<void>;
-  syncPlatform: (platform: SalesChannel) => Promise<void>;
+    config: Partial<PlatformIntegration>
+  ) => Promise<PlatformIntegration | null>;
+  disconnectPlatform: (integrationId: string) => Promise<boolean>;
+  syncPlatform: (integrationId: string) => Promise<void>;
   generateAuthUrl: (
     platform: SalesChannel,
-    redirectUri: string
-  ) => string | null;
+    redirectUri: string,
+    scopes: string[]
+  ) => Promise<string | null>;
   handleAuthCallback: (
     platform: SalesChannel,
     code: string,
-    state?: string
+    redirectUri: string
   ) => Promise<boolean>;
+  testConnection: (integrationId: string) => Promise<boolean>;
+  refreshIntegrations: () => Promise<void>;
 }
 
 // Create the initial context value
 const initialContext: IntegrationsContextType = {
-  configs: {},
+  integrations: [],
   isLoading: true,
-  syncStatus: {} as Record<
-    SalesChannel,
-    {
-      isSyncing: boolean;
-      lastSynced: Date | null;
-      error: string | null;
-    }
-  >,
-  connectPlatform: async () => {},
-  disconnectPlatform: async () => {},
+  error: null,
+  syncStatus: {},
+  connectPlatform: async () => null,
+  disconnectPlatform: async () => false,
   syncPlatform: async () => {},
-  generateAuthUrl: () => null,
+  generateAuthUrl: async () => null,
   handleAuthCallback: async () => false,
+  testConnection: async () => false,
+  refreshIntegrations: async () => {},
 };
 
 // Create the context
@@ -73,245 +78,278 @@ const IntegrationsContext =
 export const IntegrationsProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
-  const [configs, setConfigs] = useState<IntegrationConfigs>({});
+  const [integrations, setIntegrations] = useState<PlatformIntegration[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<
     Record<
-      SalesChannel,
+      string,
       {
         isSyncing: boolean;
         lastSynced: Date | null;
         error: string | null;
       }
     >
-  >(
-    {} as Record<
-      SalesChannel,
-      {
-        isSyncing: boolean;
-        lastSynced: Date | null;
-        error: string | null;
-      }
-    >
-  );
+  >({});
 
   // Initialize the context
   useEffect(() => {
-    const loadConfigs = async () => {
-      try {
-        // Load configs from storage
-        const storedConfigs = getIntegrationConfigs();
-
-        // Decrypt sensitive data
-        const decryptedConfigs: IntegrationConfigs = {};
-        for (const [platform, config] of Object.entries(storedConfigs)) {
-          if (config) {
-            const decryptedConfig = { ...config };
-
-            // Decrypt sensitive fields
-            if (config.accessToken) {
-              decryptedConfig.accessToken = decryptData(config.accessToken);
-            }
-            if (config.refreshToken) {
-              decryptedConfig.refreshToken = decryptData(config.refreshToken);
-            }
-            if (config.apiSecret) {
-              decryptedConfig.apiSecret = decryptData(config.apiSecret);
-            }
-
-            decryptedConfigs[platform as SalesChannel] = decryptedConfig;
-          }
-        }
-
-        setConfigs(decryptedConfigs);
-
-        // Initialize sync status for each configured platform
-        const initialSyncStatus: Record<
-          SalesChannel,
-          {
-            isSyncing: boolean;
-            lastSynced: Date | null;
-            error: string | null;
-          }
-        > = {} as Record<
-          SalesChannel,
-          {
-            isSyncing: boolean;
-            lastSynced: Date | null;
-            error: string | null;
-          }
-        >;
-
-        Object.keys(decryptedConfigs).forEach((platform) => {
-          initialSyncStatus[platform as SalesChannel] = {
-            isSyncing: false,
-            lastSynced: null,
-            error: null,
-          };
-        });
-
-        setSyncStatus(initialSyncStatus);
-      } catch (error) {
-        console.error('Error loading integration configs:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadConfigs();
+    loadIntegrations();
   }, []);
+
+  // Load integrations from the API
+  const loadIntegrations = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      const fetchedIntegrations = await getIntegrations();
+      setIntegrations(fetchedIntegrations);
+
+      // Initialize sync status for each integration
+      const initialSyncStatus: Record<
+        string,
+        {
+          isSyncing: boolean;
+          lastSynced: Date | null;
+          error: string | null;
+        }
+      > = {};
+
+      fetchedIntegrations.forEach((integration) => {
+        initialSyncStatus[integration.id] = {
+          isSyncing: false,
+          lastSynced: integration.lastSyncAt || null,
+          error: null,
+        };
+      });
+
+      setSyncStatus(initialSyncStatus);
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to load integrations');
+      console.error('Error loading integrations:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Refresh integrations data
+  const refreshIntegrations = async () => {
+    await loadIntegrations();
+  };
 
   // Connect a platform
   const connectPlatform = async (
     platform: SalesChannel,
-    config: PlatformAuthConfig
-  ) => {
+    config: Partial<PlatformIntegration>
+  ): Promise<PlatformIntegration | null> => {
     try {
-      // Encrypt sensitive data before storing
-      const encryptedConfig = { ...config };
+      setError(null);
+      
+      // Ensure the platform field is set
+      const integrationData: Partial<PlatformIntegration> = {
+        ...config,
+        platform,
+        active: true,
+      };
+      
+      // Create the integration
+      const newIntegration = await createIntegration(integrationData);
+      
+      // Update the state
+      setIntegrations((prev) => [...prev, newIntegration]);
 
-      if (config.accessToken) {
-        encryptedConfig.accessToken = encryptData(config.accessToken);
-      }
-      if (config.refreshToken) {
-        encryptedConfig.refreshToken = encryptData(config.refreshToken);
-      }
-      if (config.apiSecret) {
-        encryptedConfig.apiSecret = encryptData(config.apiSecret);
-      }
-
-      // Update the platform config
-      updatePlatformConfig(platform, encryptedConfig);
-
-      // Update the state with the decrypted version
-      setConfigs((prev) => ({
-        ...prev,
-        [platform]: config,
-      }));
-
-      // Initialize sync status for the platform
+      // Initialize sync status for the new integration
       setSyncStatus((prev) => ({
         ...prev,
-        [platform]: {
+        [newIntegration.id]: {
           isSyncing: false,
           lastSynced: null,
           error: null,
         },
       }));
-    } catch (error) {
-      console.error(`Error connecting ${platform}:`, error);
-      throw error;
+
+      return newIntegration;
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || `Error connecting ${platform}`);
+      console.error(`Error connecting ${platform}:`, err);
+      return null;
     }
   };
 
   // Disconnect a platform
-  const disconnectPlatform = async (platform: SalesChannel) => {
+  const disconnectPlatform = async (integrationId: string): Promise<boolean> => {
     try {
-      // Remove the platform config
-      removePlatformConfig(platform);
-
+      setError(null);
+      
+      // Delete the integration
+      await deleteIntegration(integrationId);
+      
       // Update the state
-      setConfigs((prev) => {
-        const newConfigs = { ...prev };
-        delete newConfigs[platform];
-        return newConfigs;
-      });
+      setIntegrations((prev) => 
+        prev.filter((integration) => integration.id !== integrationId)
+      );
 
       // Update sync status
       setSyncStatus((prev) => {
         const newStatus = { ...prev };
-        delete newStatus[platform];
+        delete newStatus[integrationId];
         return newStatus;
       });
-    } catch (error) {
-      console.error(`Error disconnecting ${platform}:`, error);
-      throw error;
+
+      return true;
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || `Error disconnecting integration ${integrationId}`);
+      console.error(`Error disconnecting integration ${integrationId}:`, err);
+      return false;
     }
   };
 
   // Sync a platform
-  const syncPlatform = async (platform: SalesChannel) => {
+  const syncPlatform = async (integrationId: string) => {
     try {
       // Update sync status to indicate syncing
       setSyncStatus((prev) => ({
         ...prev,
-        [platform]: {
-          ...prev[platform],
+        [integrationId]: {
+          ...prev[integrationId],
           isSyncing: true,
           error: null,
         },
       }));
 
-      // Get the config for this platform
-      const config = configs[platform];
+      // Sync orders from the platform
+      const syncEvent = await syncOrders(integrationId);
 
-      if (!config) {
-        throw new Error(`No configuration found for ${platform}`);
-      }
-
-      // Fetch orders from the platform
-      // In a real implementation, you would save these orders to your database
-      const orders = await fetchOrdersFromPlatform(platform, config);
-
-      console.log(`Synced ${orders.length} orders from ${platform}`);
+      // Update the integration's lastSyncAt in state
+      setIntegrations((prev) =>
+        prev.map((integration) =>
+          integration.id === integrationId
+            ? { ...integration, lastSyncAt: syncEvent.created_at }
+            : integration
+        )
+      );
 
       // Update sync status to indicate success
       setSyncStatus((prev) => ({
         ...prev,
-        [platform]: {
+        [integrationId]: {
           isSyncing: false,
-          lastSynced: new Date(),
+          lastSynced: syncEvent.created_at,
           error: null,
         },
       }));
-    } catch (error) {
-      console.error(`Error syncing ${platform}:`, error);
 
+      console.log(`Synced ${syncEvent.items_processed} orders from integration ${integrationId}`);
+    } catch (err) {
+      const apiError = err as ApiError;
+      const errorMessage = apiError.message || `Error syncing integration ${integrationId}`;
+      
       // Update sync status to indicate error
       setSyncStatus((prev) => ({
         ...prev,
-        [platform]: {
-          ...prev[platform],
+        [integrationId]: {
+          ...prev[integrationId],
           isSyncing: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: errorMessage,
         },
       }));
 
-      throw error;
+      console.error(`Error syncing integration ${integrationId}:`, err);
     }
   };
 
   // Generate an OAuth URL for a platform
-  const generateAuthUrl = (
+  const generatePlatformAuthUrl = async (
     platform: SalesChannel,
-    redirectUri: string
-  ): string | null => {
-    // This would be implemented for each platform
-    // For now, returning null as a placeholder
-    return null;
+    redirectUri: string,
+    scopes: string[]
+  ): Promise<string | null> => {
+    try {
+      setError(null);
+      
+      const config: OAuthConfig = {
+        platform,
+        clientId: '', // Will be retrieved from backend
+        clientSecret: '', // Will be retrieved from backend
+        redirectUri,
+        scopes,
+        state: platform, // Use platform as state
+      };
+      
+      const url = await generateAuthUrl(config);
+      return url;
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || `Error generating auth URL for ${platform}`);
+      console.error(`Error generating auth URL for ${platform}:`, err);
+      return null;
+    }
   };
 
   // Handle OAuth callback
   const handleAuthCallback = async (
     platform: SalesChannel,
     code: string,
-    state?: string
+    redirectUri: string
   ): Promise<boolean> => {
-    // This would be implemented for each platform
-    // For now, returning false as a placeholder
-    return false;
+    try {
+      setError(null);
+      
+      // Exchange auth code for access token
+      const integration = await exchangeAuthCode(platform, code, redirectUri);
+      
+      // Update integrations list
+      setIntegrations((prev) => [...prev, integration]);
+      
+      // Initialize sync status for the new integration
+      setSyncStatus((prev) => ({
+        ...prev,
+        [integration.id]: {
+          isSyncing: false,
+          lastSynced: integration.lastSyncAt || null,
+          error: null,
+        },
+      }));
+
+      return true;
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || `Error completing authentication for ${platform}`);
+      console.error(`Error handling auth callback for ${platform}:`, err);
+      return false;
+    }
+  };
+
+  // Test connection to a platform
+  const testConnection = async (integrationId: string): Promise<boolean> => {
+    try {
+      setError(null);
+      return await testIntegrationConnection(integrationId);
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || `Error testing connection for integration ${integrationId}`);
+      console.error(`Error testing connection for integration ${integrationId}:`, err);
+      return false;
+    }
   };
 
   // Create the context value
   const contextValue: IntegrationsContextType = {
-    configs,
+    integrations,
     isLoading,
+    error,
     syncStatus,
     connectPlatform,
     disconnectPlatform,
     syncPlatform,
-    generateAuthUrl,
+    generateAuthUrl: generatePlatformAuthUrl,
     handleAuthCallback,
+    testConnection,
+    refreshIntegrations,
   };
 
   return (

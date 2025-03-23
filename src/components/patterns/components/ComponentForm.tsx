@@ -1,5 +1,6 @@
 // src/components/patterns/components/ComponentForm.tsx
 
+import { X } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useComponentContext } from '../../../context/ComponentContext';
 import { EnumTypes } from '../../../types';
@@ -21,6 +22,9 @@ const ComponentForm: React.FC<ComponentFormProps> = ({
   const { addComponent, updateComponent } = useComponentContext();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<
+    Record<string, string>
+  >({});
 
   // Form state
   const [name, setName] = useState('');
@@ -54,8 +58,60 @@ const ComponentForm: React.FC<ComponentFormProps> = ({
     }
   }, [component]);
 
+  // Validate form
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+
+    if (!name.trim()) {
+      errors.name = 'Component name is required';
+    }
+
+    if (pathData) {
+      try {
+        // Basic SVG path validation - just check if it starts with a valid command
+        const validCommands = [
+          'M',
+          'm',
+          'L',
+          'l',
+          'H',
+          'h',
+          'V',
+          'v',
+          'C',
+          'c',
+          'S',
+          's',
+          'Q',
+          'q',
+          'T',
+          't',
+          'A',
+          'a',
+          'Z',
+          'z',
+        ];
+        const firstCommand = pathData.trim().charAt(0);
+        if (!validCommands.includes(firstCommand)) {
+          errors.pathData =
+            'SVG path must start with a valid command (M, L, etc.)';
+        }
+      } catch (e) {
+        errors.pathData = 'Invalid SVG path data';
+      }
+    }
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!validateForm()) {
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -70,30 +126,37 @@ const ComponentForm: React.FC<ComponentFormProps> = ({
         rotation: rotation !== 0 ? rotation : undefined,
         attributes,
         patternId,
-        ...(component && {
-          id: component.id,
-          createdAt: component.createdAt,
-          modifiedAt: new Date(),
-        }),
       };
 
       let savedComponent: Component;
 
       if (component) {
         // Update existing component
-        savedComponent = await updateComponent(component.id, componentData);
+        savedComponent = await updateComponent(component.id, {
+          ...componentData,
+          modifiedAt: new Date(),
+        });
       } else {
-        // Add new component
-        savedComponent = await addComponent(
-          componentData as Omit<Component, 'id'>
-        );
+        // Add new component (we need to include all required fields)
+        const now = new Date();
+
+        // Need to explicitly type this properly to satisfy TypeScript
+        const newComponent: Omit<Component, 'id'> = {
+          ...componentData,
+          createdAt: now,
+          modifiedAt: now,
+        };
+
+        savedComponent = await addComponent(newComponent);
       }
 
       if (onSave) {
         onSave(savedComponent);
       }
     } catch (err) {
-      setError('Failed to save component');
+      setError(
+        'Failed to save component. Please check your inputs and try again.'
+      );
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -106,7 +169,7 @@ const ComponentForm: React.FC<ComponentFormProps> = ({
       setAttributeKeys(updatedKeys);
 
       // Try to convert numeric values
-      let value: any = newAttrValue; // Changed from let value = newAttrValue;
+      let value: any = newAttrValue;
       const numValue = parseFloat(newAttrValue);
       if (!isNaN(numValue) && numValue.toString() === newAttrValue) {
         value = numValue;
@@ -132,6 +195,66 @@ const ComponentForm: React.FC<ComponentFormProps> = ({
     setAttributes(updatedAttributes);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Add attribute when Enter is pressed in attribute value field
+    if (e.key === 'Enter' && newAttrKey.trim() && !e.shiftKey) {
+      e.preventDefault();
+      addAttribute();
+    }
+  };
+
+  const resetForm = () => {
+    if (component) {
+      // Reset to original component values
+      setName(component.name);
+      setDescription(component.description);
+      setComponentType(component.componentType);
+      setIsOptional(component.isOptional);
+      setPathData(component.pathData || '');
+      setPosition(component.position || { x: 0, y: 0 });
+      setRotation(component.rotation || 0);
+      setAttributes(component.attributes || {});
+      setAttributeKeys(Object.keys(component.attributes || {}));
+    } else {
+      // Reset to defaults for new component
+      setName('');
+      setDescription('');
+      setComponentType(EnumTypes.ComponentType.PANEL);
+      setIsOptional(false);
+      setPathData('');
+      setPosition({ x: 0, y: 0 });
+      setRotation(0);
+      setAttributes({});
+      setAttributeKeys([]);
+    }
+
+    setError(null);
+    setValidationErrors({});
+  };
+
+  // SVG path preview
+  const pathPreview = () => {
+    if (!pathData) return null;
+
+    try {
+      return (
+        <div className='mt-2 border border-stone-200 rounded p-3 bg-stone-50'>
+          <p className='text-xs text-stone-500 mb-2'>Path Preview:</p>
+          <svg
+            width='100%'
+            height='100'
+            viewBox='0 0 200 100'
+            xmlns='http://www.w3.org/2000/svg'
+          >
+            <path d={pathData} fill='none' stroke='#b45309' strokeWidth='2' />
+          </svg>
+        </div>
+      );
+    } catch (e) {
+      return null;
+    }
+  };
+
   return (
     <div className='bg-white shadow-lg rounded-lg overflow-hidden'>
       <div className='bg-amber-600 p-4'>
@@ -142,30 +265,52 @@ const ComponentForm: React.FC<ComponentFormProps> = ({
 
       <form onSubmit={handleSubmit} className='p-6'>
         {error && (
-          <div className='mb-4 p-3 bg-red-100 text-red-700 rounded'>
+          <div
+            className='mb-4 p-3 bg-red-100 text-red-700 rounded'
+            role='alert'
+          >
             {error}
           </div>
         )}
 
         <div className='grid grid-cols-1 md:grid-cols-2 gap-4 mb-4'>
           <div>
-            <label className='block text-sm font-medium text-stone-700 mb-1'>
+            <label
+              htmlFor='component-name'
+              className='block text-sm font-medium text-stone-700 mb-1'
+            >
               Component Name
             </label>
             <input
+              id='component-name'
               type='text'
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className='w-full px-3 py-2 border border-stone-300 rounded-md'
+              className={`w-full px-3 py-2 border ${
+                validationErrors.name ? 'border-red-500' : 'border-stone-300'
+              } rounded-md`}
+              aria-invalid={validationErrors.name ? 'true' : 'false'}
+              aria-describedby={
+                validationErrors.name ? 'name-error' : undefined
+              }
               required
             />
+            {validationErrors.name && (
+              <p id='name-error' className='mt-1 text-sm text-red-600'>
+                {validationErrors.name}
+              </p>
+            )}
           </div>
 
           <div>
-            <label className='block text-sm font-medium text-stone-700 mb-1'>
+            <label
+              htmlFor='component-type'
+              className='block text-sm font-medium text-stone-700 mb-1'
+            >
               Component Type
             </label>
             <select
+              id='component-type'
               value={componentType}
               onChange={(e) =>
                 setComponentType(e.target.value as EnumTypes.ComponentType)
@@ -183,10 +328,14 @@ const ComponentForm: React.FC<ComponentFormProps> = ({
         </div>
 
         <div className='mb-4'>
-          <label className='block text-sm font-medium text-stone-700 mb-1'>
+          <label
+            htmlFor='component-description'
+            className='block text-sm font-medium text-stone-700 mb-1'
+          >
             Description
           </label>
           <textarea
+            id='component-description'
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             className='w-full px-3 py-2 border border-stone-300 rounded-md'
@@ -213,24 +362,47 @@ const ComponentForm: React.FC<ComponentFormProps> = ({
         </div>
 
         <div className='mb-4'>
-          <label className='block text-sm font-medium text-stone-700 mb-1'>
+          <label
+            htmlFor='svg-path'
+            className='block text-sm font-medium text-stone-700 mb-1'
+          >
             SVG Path Data (optional)
+            <span className='ml-2 text-xs text-stone-500'>
+              (Format: M x,y L x,y Z)
+            </span>
           </label>
           <textarea
+            id='svg-path'
             value={pathData}
             onChange={(e) => setPathData(e.target.value)}
-            className='w-full px-3 py-2 border border-stone-300 rounded-md'
+            className={`w-full px-3 py-2 border ${
+              validationErrors.pathData ? 'border-red-500' : 'border-stone-300'
+            } rounded-md`}
             rows={2}
             placeholder='e.g., M 10,10 L 100,10 L 100,100 L 10,100 Z'
+            aria-invalid={validationErrors.pathData ? 'true' : 'false'}
+            aria-describedby={
+              validationErrors.pathData ? 'path-error' : undefined
+            }
           />
+          {validationErrors.pathData && (
+            <p id='path-error' className='mt-1 text-sm text-red-600'>
+              {validationErrors.pathData}
+            </p>
+          )}
+          {pathPreview()}
         </div>
 
         <div className='grid grid-cols-1 md:grid-cols-3 gap-4 mb-4'>
           <div>
-            <label className='block text-sm font-medium text-stone-700 mb-1'>
+            <label
+              htmlFor='position-x'
+              className='block text-sm font-medium text-stone-700 mb-1'
+            >
               Position X
             </label>
             <input
+              id='position-x'
               type='number'
               value={position.x}
               onChange={(e) =>
@@ -241,10 +413,14 @@ const ComponentForm: React.FC<ComponentFormProps> = ({
           </div>
 
           <div>
-            <label className='block text-sm font-medium text-stone-700 mb-1'>
+            <label
+              htmlFor='position-y'
+              className='block text-sm font-medium text-stone-700 mb-1'
+            >
               Position Y
             </label>
             <input
+              id='position-y'
               type='number'
               value={position.y}
               onChange={(e) =>
@@ -255,10 +431,14 @@ const ComponentForm: React.FC<ComponentFormProps> = ({
           </div>
 
           <div>
-            <label className='block text-sm font-medium text-stone-700 mb-1'>
+            <label
+              htmlFor='rotation'
+              className='block text-sm font-medium text-stone-700 mb-1'
+            >
               Rotation (degrees)
             </label>
             <input
+              id='rotation'
               type='number'
               value={rotation}
               onChange={(e) => setRotation(parseInt(e.target.value) || 0)}
@@ -290,21 +470,9 @@ const ComponentForm: React.FC<ComponentFormProps> = ({
                     type='button'
                     onClick={() => removeAttribute(key)}
                     className='text-red-500 hover:text-red-700'
+                    aria-label={`Remove ${key} attribute`}
                   >
-                    <svg
-                      xmlns='http://www.w3.org/2000/svg'
-                      className='h-5 w-5'
-                      fill='none'
-                      viewBox='0 0 24 24'
-                      stroke='currentColor'
-                    >
-                      <path
-                        strokeLinecap='round'
-                        strokeLinejoin='round'
-                        strokeWidth={2}
-                        d='M6 18L18 6M6 6l12 12'
-                      />
-                    </svg>
+                    <X className='h-5 w-5' />
                   </button>
                 </div>
               ))}
@@ -322,13 +490,16 @@ const ComponentForm: React.FC<ComponentFormProps> = ({
               onChange={(e) => setNewAttrKey(e.target.value)}
               placeholder='Attribute name'
               className='flex-1 px-3 py-2 border border-stone-300 rounded-md'
+              aria-label='New attribute name'
             />
             <input
               type='text'
               value={newAttrValue}
               onChange={(e) => setNewAttrValue(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder='Attribute value'
               className='flex-1 px-3 py-2 border border-stone-300 rounded-md'
+              aria-label='New attribute value'
             />
             <button
               type='button'
@@ -344,25 +515,35 @@ const ComponentForm: React.FC<ComponentFormProps> = ({
           </p>
         </div>
 
-        <div className='flex justify-end gap-3'>
+        <div className='flex justify-between gap-3'>
           <button
             type='button'
-            onClick={onCancel}
+            onClick={resetForm}
             className='px-4 py-2 border border-stone-300 text-stone-700 rounded-md hover:bg-stone-50'
           >
-            Cancel
+            Reset
           </button>
-          <button
-            type='submit'
-            disabled={isLoading}
-            className='px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 disabled:opacity-50'
-          >
-            {isLoading
-              ? 'Saving...'
-              : component
-              ? 'Update Component'
-              : 'Add Component'}
-          </button>
+
+          <div className='flex gap-3'>
+            <button
+              type='button'
+              onClick={onCancel}
+              className='px-4 py-2 border border-stone-300 text-stone-700 rounded-md hover:bg-stone-50'
+            >
+              Cancel
+            </button>
+            <button
+              type='submit'
+              disabled={isLoading}
+              className='px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 disabled:opacity-50'
+            >
+              {isLoading
+                ? 'Saving...'
+                : component
+                ? 'Update Component'
+                : 'Add Component'}
+            </button>
+          </div>
         </div>
       </form>
     </div>

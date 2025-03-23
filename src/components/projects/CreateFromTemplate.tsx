@@ -2,8 +2,8 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useProjects } from '../../context/ProjectContext';
+import { ProjectTemplate } from '../../context/projectTemplate';
 import { useProjectTemplates } from '../../context/ProjectTemplateContext';
-import { ProjectTemplate } from '../../types/projectTemplate';
 import ProjectTemplateList from './ProjectTemplateList';
 
 const CreateFromTemplate: React.FC = () => {
@@ -119,6 +119,33 @@ const CreateFromTemplate: React.FC = () => {
     setCreateError(null);
   };
 
+  // Loading spinner component
+  const LoadingSpinner = () => (
+    <div className='flex justify-center items-center p-8'>
+      <svg
+        className='animate-spin h-8 w-8 text-amber-600'
+        xmlns='http://www.w3.org/2000/svg'
+        fill='none'
+        viewBox='0 0 24 24'
+      >
+        <circle
+          className='opacity-25'
+          cx='12'
+          cy='12'
+          r='10'
+          stroke='currentColor'
+          strokeWidth='4'
+        ></circle>
+        <path
+          className='opacity-75'
+          fill='currentColor'
+          d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
+        ></path>
+      </svg>
+      <span className='ml-3 text-stone-600'>Loading templates...</span>
+    </div>
+  );
+
   return (
     <div className='space-y-6'>
       <h2 className='text-2xl font-bold'>Create Project from Template</h2>
@@ -136,11 +163,16 @@ const CreateFromTemplate: React.FC = () => {
           <p className='mb-4 text-stone-600'>
             Select a template to create your new project:
           </p>
-          <ProjectTemplateList
-            onSelectTemplate={handleSelectTemplate}
-            showActions={false}
-            title='Available Templates'
-          />
+
+          {loading ? (
+            <LoadingSpinner />
+          ) : (
+            <ProjectTemplateList
+              onSelectTemplate={handleSelectTemplate}
+              showActions={false}
+              title='Available Templates'
+            />
+          )}
         </div>
       ) : (
         <div className='bg-white shadow-sm rounded-lg border border-stone-200 p-6'>

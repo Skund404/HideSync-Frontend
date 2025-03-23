@@ -109,8 +109,12 @@ const OrderWorkflow: React.FC<OrderWorkflowProps> = ({
                             ? 'bg-amber-600'
                             : isCurrent
                             ? 'bg-amber-500'
-                            : 'bg-gray-200'
-                        } h-6 w-6 rounded-full`}
+                            : isUpcoming
+                            ? 'bg-gray-200'
+                            : 'bg-gray-300'
+                        } h-6 w-6 rounded-full ${
+                          isUpcoming ? 'opacity-70' : 'opacity-100'
+                        }`}
                       >
                         {isCompleted ? (
                           // Checkmark for completed steps
@@ -130,7 +134,11 @@ const OrderWorkflow: React.FC<OrderWorkflowProps> = ({
                           // Step number for current and upcoming steps
                           <span
                             className={`text-xs font-medium ${
-                              isCurrent ? 'text-white' : 'text-gray-500'
+                              isCurrent
+                                ? 'text-white'
+                                : isUpcoming
+                                ? 'text-gray-500'
+                                : 'text-gray-600'
                             }`}
                           >
                             {index + 1}
@@ -146,10 +154,17 @@ const OrderWorkflow: React.FC<OrderWorkflowProps> = ({
                               ? 'text-amber-600'
                               : isCurrent
                               ? 'text-amber-500'
+                              : isUpcoming
+                              ? 'text-gray-400'
                               : 'text-gray-500'
                           }
                         >
                           {step.label}
+                          {isUpcoming && (
+                            <span className='block text-xs text-gray-400 italic'>
+                              Coming next
+                            </span>
+                          )}
                         </span>
                       </div>
                     </li>
@@ -167,6 +182,16 @@ const OrderWorkflow: React.FC<OrderWorkflowProps> = ({
             >
               Cancel Order
             </button>
+
+            {/* Show a preview of the next step if there is one */}
+            {canMoveToNextStep && (
+              <div className='flex-1 mx-2 text-right text-xs text-gray-500'>
+                <span className='block'>Next step:</span>
+                <span className='font-medium text-amber-600'>
+                  {workflowSteps[currentStepIndex + 1].label}
+                </span>
+              </div>
+            )}
 
             <button
               onClick={handleMoveToNext}

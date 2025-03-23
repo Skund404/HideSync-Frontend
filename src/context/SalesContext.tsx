@@ -1,12 +1,10 @@
+// src/context/SalesContext.tsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { updateOrderFulfillment } from '../services/integrations/platformIntegration';
+import * as salesService from '../services/sales-service';
+import { PickingListStatus } from '../types/pickingListTypes';
 import {
-  fetchOrdersFromPlatform,
-  updateOrderFulfillment,
-} from '../services/integrations/platformIntegration';
-import { completedSalesData, salesData } from '../services/mock/sales';
-import { PickingListStatus } from '../types/pickinglist';
-import {
-  FulfillmentStatus,
+  PickingListSummary,
   Sale,
   SalesChannel,
   SalesFilters,
@@ -27,13 +25,13 @@ interface SalesContextType {
     trackingNumber: string,
     shippingProvider: string
   ) => Promise<Sale>;
-  createPickingList: (saleId: number) => Promise<string>;
+  createPickingList: (saleId: number) => Promise<number>;
   getChannelMetrics: () => Record<
     SalesChannel,
     { count: number; revenue: number; fees: number }
   >;
 
-  // New methods for Material and Inventory Integration
+  // Methods for Material and Inventory Integration
   getMaterialRequirements: (saleId: number) => Promise<any[]>;
   reserveMaterials: (saleId: number) => Promise<boolean>;
   updateInventoryOnFulfillment: (saleId: number) => Promise<boolean>;
@@ -48,17 +46,35 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({
   const [completedSales, setCompletedSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [channelMetricsCache, setChannelMetricsCache] = useState<Record<
+    SalesChannel,
+    { count: number; revenue: number; fees: number }
+  > | null>(null);
 
   useEffect(() => {
-    // Simulate API fetch
-    try {
-      setSales(salesData);
-      setCompletedSales(completedSalesData);
-      setLoading(false);
-    } catch (err) {
-      setError('Failed to load sales data');
-      setLoading(false);
-    }
+    // Fetch data from API
+    const fetchSales = async () => {
+      try {
+        setLoading(true);
+
+        // Fetch both active and completed sales in parallel
+        const [activeSales, completed] = await Promise.all([
+          salesService.getAllSales(),
+          salesService.getCompletedSales(),
+        ]);
+
+        setSales(activeSales);
+        setCompletedSales(completed);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching sales:', err);
+        setError('Failed to load sales data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSales();
   }, []);
 
   // Get a single sale by ID
@@ -101,7 +117,7 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({
 
     if (filters.customerId) {
       filteredSales = filteredSales.filter(
-        (sale) => sale.customer.id.toString() === filters.customerId
+        (sale) => sale.customer.id === filters.customerId
       );
     }
 
@@ -112,19 +128,39 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     if (filters.dateFrom && filters.dateTo) {
+      const fromDate =
+        typeof filters.dateFrom === 'string'
+          ? new Date(filters.dateFrom)
+          : filters.dateFrom;
+
+      const toDate =
+        typeof filters.dateTo === 'string'
+          ? new Date(filters.dateTo)
+          : filters.dateTo;
+
       filteredSales = filteredSales.filter((sale) => {
         const saleDate = new Date(sale.createdAt);
-        return saleDate >= filters.dateFrom! && saleDate <= filters.dateTo!;
+        return saleDate >= fromDate && saleDate <= toDate;
       });
     } else if (filters.dateFrom) {
+      const fromDate =
+        typeof filters.dateFrom === 'string'
+          ? new Date(filters.dateFrom)
+          : filters.dateFrom;
+
       filteredSales = filteredSales.filter((sale) => {
         const saleDate = new Date(sale.createdAt);
-        return saleDate >= filters.dateFrom!;
+        return saleDate >= fromDate;
       });
     } else if (filters.dateTo) {
+      const toDate =
+        typeof filters.dateTo === 'string'
+          ? new Date(filters.dateTo)
+          : filters.dateTo;
+
       filteredSales = filteredSales.filter((sale) => {
         const saleDate = new Date(sale.createdAt);
-        return saleDate <= filters.dateTo!;
+        return saleDate <= toDate;
       });
     }
 
@@ -149,16 +185,10 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({
   // Create a new sale
   const createSale = async (sale: Omit<Sale, 'id'>): Promise<Sale> => {
     try {
-      // Generate a new ID (this would be handled by the server in a real app)
-      const newId = Math.max(...sales.map((s) => s.id), 0) + 1;
+      const newSale = await salesService.createSale(sale);
 
-      const newSale: Sale = {
-        ...(sale as any),
-        id: newId,
-      };
-
-      // Add to sales list
-      setSales([...sales, newSale]);
+      // Add to sales list to keep state in sync
+      setSales((prevSales) => [...prevSales, newSale]);
 
       return newSale;
     } catch (err) {
@@ -173,37 +203,26 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({
     updates: Partial<Sale>
   ): Promise<Sale> => {
     try {
-      const saleIndex = sales.findIndex((s) => s.id === id);
+      const updatedSale = await salesService.updateSale(id, updates);
 
-      if (saleIndex === -1) {
-        const completedSaleIndex = completedSales.findIndex((s) => s.id === id);
+      // Update local state
+      const isCompletedSale = completedSales.some((s) => s.id === id);
 
-        if (completedSaleIndex === -1) {
-          throw new Error('Sale not found');
+      if (isCompletedSale) {
+        setCompletedSales((prevSales) =>
+          prevSales.map((s) => (s.id === id ? updatedSale : s))
+        );
+      } else {
+        setSales((prevSales) =>
+          prevSales.map((s) => (s.id === id ? updatedSale : s))
+        );
+
+        // If the sale was just completed, move it to completedSales
+        if (updatedSale.status === 'completed') {
+          setSales((prevSales) => prevSales.filter((s) => s.id !== id));
+          setCompletedSales((prevSales) => [...prevSales, updatedSale]);
         }
-
-        // Update a completed sale
-        const updatedSale = {
-          ...completedSales[completedSaleIndex],
-          ...updates,
-        };
-
-        const newCompletedSales = [...completedSales];
-        newCompletedSales[completedSaleIndex] = updatedSale;
-        setCompletedSales(newCompletedSales);
-
-        return updatedSale;
       }
-
-      // Update a current sale
-      const updatedSale = {
-        ...sales[saleIndex],
-        ...updates,
-      };
-
-      const newSales = [...sales];
-      newSales[saleIndex] = updatedSale;
-      setSales(newSales);
 
       return updatedSale;
     } catch (err) {
@@ -215,71 +234,16 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({
   // Sync orders from integrated platforms
   const syncOrders = async (fromDate?: Date): Promise<number> => {
     try {
-      // Create a unified list of new orders
-      const newOrders: Sale[] = [];
+      const newOrdersCount = await salesService.syncOrders(fromDate);
 
-      // In a real app, this would fetch orders from each connected platform
-      // For this demo, we'll just simulate it
+      // Refresh sales list after syncing
+      const activeSales = await salesService.getAllSales();
+      setSales(activeSales);
 
-      // Get existing order IDs to avoid duplicates
-      const existingOrderIds = new Set(
-        [
-          ...sales.map((s) => s.marketplaceData?.externalOrderId || ''),
-          ...completedSales.map(
-            (s) => s.marketplaceData?.externalOrderId || ''
-          ),
-        ].filter((id) => id)
-      );
+      // Invalidate metrics cache
+      setChannelMetricsCache(null);
 
-      // Simulate fetching orders from Shopify
-      const shopifyConfig = {
-        shopName: 'your-shop',
-        apiKey: 'demo-api-key',
-      };
-      const shopifyOrders = await fetchOrdersFromPlatform(
-        SalesChannel.SHOPIFY,
-        shopifyConfig,
-        fromDate
-      );
-
-      // Add non-duplicate orders
-      for (const order of shopifyOrders) {
-        if (
-          order.marketplaceData?.externalOrderId &&
-          !existingOrderIds.has(order.marketplaceData.externalOrderId)
-        ) {
-          newOrders.push(order);
-          existingOrderIds.add(order.marketplaceData.externalOrderId);
-        }
-      }
-
-      // Simulate fetching orders from Etsy
-      const etsyConfig = {
-        apiKey: 'demo-etsy-key',
-      };
-      const etsyOrders = await fetchOrdersFromPlatform(
-        SalesChannel.ETSY,
-        etsyConfig,
-        fromDate
-      );
-
-      // Add non-duplicate orders
-      for (const order of etsyOrders) {
-        if (
-          order.marketplaceData?.externalOrderId &&
-          !existingOrderIds.has(order.marketplaceData.externalOrderId)
-        ) {
-          newOrders.push(order);
-          existingOrderIds.add(order.marketplaceData.externalOrderId);
-        }
-      }
-
-      // Add new orders to the sales list
-      if (newOrders.length > 0) {
-        setSales([...sales, ...newOrders]);
-      }
-
-      return newOrders.length;
+      return newOrdersCount;
     } catch (err) {
       setError('Failed to sync orders');
       throw err;
@@ -300,16 +264,21 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       // Update the sale with shipping information
-      const updatedSale = await updateSale(saleId, {
-        fulfillmentStatus: FulfillmentStatus.SHIPPED,
+      const updatedSale = await salesService.updateFulfillment(
+        saleId,
         trackingNumber,
-        shippingProvider,
-      });
+        shippingProvider
+      );
 
       // If it's a marketplace order, update the external system
       if (sale.marketplaceData) {
         await updateOrderFulfillment(sale, trackingNumber, shippingProvider);
       }
+
+      // Update local state
+      setSales((prevSales) =>
+        prevSales.map((s) => (s.id === saleId ? updatedSale : s))
+      );
 
       return updatedSale;
     } catch (err) {
@@ -319,32 +288,23 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   // Create a picking list for a sale
-  // Create a picking list for a sale - using numeric ID for compatibility
-  const createPickingList = async (saleId: number): Promise<string> => {
+  const createPickingList = async (saleId: number): Promise<number> => {
     try {
-      const sale = getSale(saleId);
-
-      if (!sale) {
-        throw new Error('Sale not found');
-      }
-
-      // In a real app, this would create a picking list in the database
-      // For this demo, we'll just generate a numeric ID
-      const numericId = parseInt(Date.now().toString().slice(-6), 10);
-
-      // Format the ID as a string for the return value
-      const pickingListId = `PL-${numericId}`;
+      const pickingListId = await salesService.createPickingList(saleId);
 
       // Update the sale with picking list reference
-      await updateSale(saleId, {
-        pickingList: {
-          id: numericId, // Use the numeric ID here
-          status: PickingListStatus.PENDING,
-          createdAt: new Date().toISOString(),
-        },
-      });
+      const sale = getSale(saleId);
+      if (sale) {
+        await updateSale(saleId, {
+          pickingList: {
+            id: pickingListId,
+            status: PickingListStatus.PENDING,
+            createdAt: new Date().toISOString(),
+          } as unknown as PickingListSummary,
+        });
+      }
 
-      return pickingListId; // Return formatted string ID
+      return pickingListId;
     } catch (err) {
       setError('Failed to create picking list');
       throw err;
@@ -356,6 +316,12 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({
     SalesChannel,
     { count: number; revenue: number; fees: number }
   > => {
+    // If we have cached metrics, return them
+    if (channelMetricsCache) {
+      return channelMetricsCache;
+    }
+
+    // Otherwise, calculate from current state (this will be replaced with API call in production)
     const metrics: Record<
       SalesChannel,
       { count: number; revenue: number; fees: number }
@@ -371,60 +337,23 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({
 
     allSales.forEach((sale) => {
       metrics[sale.channel].count += 1;
-      metrics[sale.channel].revenue += sale.total;
+      metrics[sale.channel].revenue += sale.totalAmount;
 
       if (sale.platformFees) {
         metrics[sale.channel].fees += sale.platformFees;
       }
     });
 
+    // Cache the metrics
+    setChannelMetricsCache(metrics);
+
     return metrics;
   };
-
-  // New methods for Material and Inventory Integration
 
   // Get material requirements for a sale
   const getMaterialRequirements = async (saleId: number): Promise<any[]> => {
     try {
-      const sale = getSale(saleId);
-
-      if (!sale) {
-        throw new Error('Sale not found');
-      }
-
-      // In a real app, this would calculate material requirements based on the products
-      // For this demo, we'll return mock data
-      const mockRequirements = [
-        {
-          materialId: 1,
-          name: 'Vegetable Tanned Leather',
-          quantity: 2,
-          unit: 'sq ft',
-          available: 5,
-          status: 'in_stock',
-          location: 'Cabinet 1A',
-        },
-        {
-          materialId: 2,
-          name: 'Waxed Thread',
-          quantity: 1,
-          unit: 'spool',
-          available: 3,
-          status: 'in_stock',
-          location: 'Drawer 2B',
-        },
-        {
-          materialId: 3,
-          name: 'Brass Hardware',
-          quantity: 4,
-          unit: 'pieces',
-          available: 8,
-          status: 'in_stock',
-          location: 'Drawer 3C',
-        },
-      ];
-
-      return mockRequirements;
+      return await salesService.getMaterialRequirements(saleId);
     } catch (err) {
       setError('Failed to get material requirements');
       throw err;
@@ -434,15 +363,7 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({
   // Reserve materials for a sale
   const reserveMaterials = async (saleId: number): Promise<boolean> => {
     try {
-      const sale = getSale(saleId);
-
-      if (!sale) {
-        throw new Error('Sale not found');
-      }
-
-      // In a real app, this would reserve materials in the inventory
-      // For this demo, we'll just return success
-      return true;
+      return await salesService.reserveMaterials(saleId);
     } catch (err) {
       setError('Failed to reserve materials');
       throw err;
@@ -454,15 +375,7 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({
     saleId: number
   ): Promise<boolean> => {
     try {
-      const sale = getSale(saleId);
-
-      if (!sale) {
-        throw new Error('Sale not found');
-      }
-
-      // In a real app, this would update inventory quantities
-      // For this demo, we'll just return success
-      return true;
+      return await salesService.updateInventoryOnFulfillment(saleId);
     } catch (err) {
       setError('Failed to update inventory');
       throw err;
@@ -484,7 +397,7 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({
     createPickingList,
     getChannelMetrics,
 
-    // New methods
+    // Material integration methods
     getMaterialRequirements,
     reserveMaterials,
     updateInventoryOnFulfillment,

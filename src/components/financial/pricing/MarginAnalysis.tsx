@@ -1,5 +1,5 @@
 import { Activity, Calculator, DollarSign, TrendingUp } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -20,6 +20,8 @@ import {
   formatCurrency,
   formatPercentage,
 } from '../../../utils/financialHelpers';
+import ErrorMessage from '../../common/ErrorMessage';
+import LoadingSpinner from '../../common/LoadingSpinner';
 
 const COLORS = [
   '#0088FE',
@@ -30,8 +32,17 @@ const COLORS = [
   '#FF6B6B',
 ];
 
+// Cost distribution data for the pie chart
+const COST_DISTRIBUTION = [
+  { name: 'Leather', value: 45, color: COLORS[0] },
+  { name: 'Hardware', value: 15, color: COLORS[1] },
+  { name: 'Labor', value: 25, color: COLORS[2] },
+  { name: 'Overhead', value: 10, color: COLORS[3] },
+  { name: 'Shipping', value: 5, color: COLORS[4] },
+];
+
 const MarginAnalysis: React.FC = () => {
-  const { productMetrics, materialCosts, loading } = useFinancial();
+  const { productMetrics, loading, error, refreshData } = useFinancial();
   const [analysisType, setAnalysisType] = useState<
     'comparison' | 'breakdown' | 'breakeven' | 'elasticity'
   >('comparison');
@@ -51,48 +62,92 @@ const MarginAnalysis: React.FC = () => {
     elasticity: -1.2,
   });
 
+  // Memoize the margin comparison data to avoid recalculation on every render
+  const marginComparisonData = useMemo(() => {
+    return productMetrics.map((product) => ({
+      name: product.name,
+      margin: parseFloat(product.margin.toFixed(1)),
+      sales: product.sales,
+    }));
+  }, [productMetrics]);
+
+  // Calculate contribution margin for break-even analysis
+  const contributionMargin = useMemo(
+    () => breakEvenInputs.pricePerUnit - breakEvenInputs.variableCostPerUnit,
+    [breakEvenInputs.pricePerUnit, breakEvenInputs.variableCostPerUnit]
+  );
+
+  const contributionMarginRatio = useMemo(
+    () =>
+      calculateContributionMarginRatio(
+        breakEvenInputs.pricePerUnit,
+        breakEvenInputs.variableCostPerUnit
+      ),
+    [breakEvenInputs.pricePerUnit, breakEvenInputs.variableCostPerUnit]
+  );
+
+  const breakEvenPoint = useMemo(
+    () =>
+      calculateBreakEven(
+        breakEvenInputs.fixedCosts,
+        breakEvenInputs.pricePerUnit,
+        breakEvenInputs.variableCostPerUnit
+      ),
+    [
+      breakEvenInputs.fixedCosts,
+      breakEvenInputs.pricePerUnit,
+      breakEvenInputs.variableCostPerUnit,
+    ]
+  );
+
+  // Calculate price elasticity results
+  const elasticityResults = useMemo(() => {
+    const priceChangePercent =
+      (elasticityInputs.newPrice - elasticityInputs.currentPrice) /
+      elasticityInputs.currentPrice;
+    const volumeChangePercent =
+      priceChangePercent * elasticityInputs.elasticity;
+    const newVolume =
+      elasticityInputs.currentVolume * (1 + volumeChangePercent);
+    const currentRevenue =
+      elasticityInputs.currentPrice * elasticityInputs.currentVolume;
+    const newRevenue = elasticityInputs.newPrice * newVolume;
+    const revenueChange = newRevenue - currentRevenue;
+    const revenueChangePercent = (revenueChange / currentRevenue) * 100;
+
+    return {
+      priceChangePercent,
+      volumeChangePercent,
+      newVolume,
+      currentRevenue,
+      newRevenue,
+      revenueChange,
+      revenueChangePercent,
+    };
+  }, [elasticityInputs]);
+
   if (loading) {
     return (
       <div className='flex items-center justify-center h-64'>
-        <div className='text-center'>
-          <div className='inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-600'></div>
-          <p className='mt-2 text-sm text-stone-500'>Loading margin data...</p>
-        </div>
+        <LoadingSpinner
+          size='medium'
+          color='amber'
+          message='Loading margin data...'
+        />
       </div>
     );
   }
 
-  // Prepare product margin comparison data
-  const marginComparisonData = productMetrics.map((product) => ({
-    name: product.name,
-    margin: parseFloat(product.margin.toFixed(1)),
-    sales: product.sales,
-  }));
-
-  // Calculate contribution margin for break-even analysis
-  const contributionMargin =
-    breakEvenInputs.pricePerUnit - breakEvenInputs.variableCostPerUnit;
-  const contributionMarginRatio = calculateContributionMarginRatio(
-    breakEvenInputs.pricePerUnit,
-    breakEvenInputs.variableCostPerUnit
-  );
-  const breakEvenPoint = calculateBreakEven(
-    breakEvenInputs.fixedCosts,
-    breakEvenInputs.pricePerUnit,
-    breakEvenInputs.variableCostPerUnit
-  );
-
-  // Calculate price elasticity results
-  const priceChangePercent =
-    (elasticityInputs.newPrice - elasticityInputs.currentPrice) /
-    elasticityInputs.currentPrice;
-  const volumeChangePercent = priceChangePercent * elasticityInputs.elasticity;
-  const newVolume = elasticityInputs.currentVolume * (1 + volumeChangePercent);
-  const currentRevenue =
-    elasticityInputs.currentPrice * elasticityInputs.currentVolume;
-  const newRevenue = elasticityInputs.newPrice * newVolume;
-  const revenueChange = newRevenue - currentRevenue;
-  const revenueChangePercent = (revenueChange / currentRevenue) * 100;
+  if (error) {
+    return (
+      <div className='flex items-center justify-center h-64'>
+        <ErrorMessage
+          message='Unable to load margin analysis data. Please try again.'
+          onRetry={refreshData}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className='space-y-6'>
@@ -160,85 +215,99 @@ const MarginAnalysis: React.FC = () => {
               your most profitable products and opportunities for improvement.
             </p>
 
-            <div className='h-80'>
-              <ResponsiveContainer width='100%' height='100%'>
-                <BarChart
-                  data={marginComparisonData}
-                  margin={{ top: 10, right: 30, left: 20, bottom: 50 }}
-                >
-                  <CartesianGrid strokeDasharray='3 3' />
-                  <XAxis
-                    dataKey='name'
-                    angle={-45}
-                    textAnchor='end'
-                    height={70}
-                    tick={{ fontSize: 12 }}
-                  />
-                  <YAxis
-                    yAxisId='left'
-                    orientation='left'
-                    stroke='#8884d8'
-                    unit='%'
-                  />
-                  <YAxis
-                    yAxisId='right'
-                    orientation='right'
-                    stroke='#82ca9d'
-                    domain={[0, 'dataMax']}
-                  />
-                  <Tooltip
-                    formatter={(value, name) => {
-                      if (name === 'margin')
-                        return formatPercentage(value as number);
-                      return formatCurrency(value as number);
-                    }}
-                  />
-                  <Legend />
-                  <Bar
-                    yAxisId='left'
-                    dataKey='margin'
-                    name='Profit Margin'
-                    fill='#8884d8'
-                  />
-                  <Bar
-                    yAxisId='right'
-                    dataKey='sales'
-                    name='Sales Volume'
-                    fill='#82ca9d'
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            {marginComparisonData.length === 0 ? (
+              <div className='p-8 text-center bg-stone-50 rounded-md border border-stone-200'>
+                <p className='text-stone-500'>
+                  No product metrics available for analysis.
+                </p>
+                <p className='text-sm text-stone-400 mt-2'>
+                  Add products with sales and margin data to see comparison
+                  charts.
+                </p>
+              </div>
+            ) : (
+              <div className='h-80'>
+                <ResponsiveContainer width='100%' height='100%'>
+                  <BarChart
+                    data={marginComparisonData}
+                    margin={{ top: 10, right: 30, left: 20, bottom: 50 }}
+                  >
+                    <CartesianGrid strokeDasharray='3 3' />
+                    <XAxis
+                      dataKey='name'
+                      angle={-45}
+                      textAnchor='end'
+                      height={70}
+                      tick={{ fontSize: 12 }}
+                    />
+                    <YAxis
+                      yAxisId='left'
+                      orientation='left'
+                      stroke='#8884d8'
+                      unit='%'
+                    />
+                    <YAxis
+                      yAxisId='right'
+                      orientation='right'
+                      stroke='#82ca9d'
+                      domain={[0, 'dataMax']}
+                    />
+                    <Tooltip
+                      formatter={(value, name) => {
+                        if (name === 'margin')
+                          return formatPercentage(value as number);
+                        return formatCurrency(value as number);
+                      }}
+                    />
+                    <Legend />
+                    <Bar
+                      yAxisId='left'
+                      dataKey='margin'
+                      name='Profit Margin'
+                      fill='#8884d8'
+                    />
+                    <Bar
+                      yAxisId='right'
+                      dataKey='sales'
+                      name='Sales Volume'
+                      fill='#82ca9d'
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
 
-            <div className='mt-6 p-4 bg-blue-50 rounded-md border border-blue-100'>
-              <h4 className='font-medium text-blue-800 mb-2'>
-                Margin Analysis Insights
-              </h4>
-              <ul className='space-y-1 text-sm text-blue-700'>
-                <li>
-                  • {productMetrics[0]?.name || 'Product 1'} has the highest
-                  profit margin at{' '}
-                  {formatPercentage(productMetrics[0]?.margin || 0)}
-                </li>
-                <li>
-                  • The average profit margin across all products is{' '}
-                  {formatPercentage(
-                    productMetrics.reduce(
-                      (sum, product) => sum + product.margin,
-                      0
-                    ) / productMetrics.length
-                  )}
-                </li>
-                <li>
-                  • Consider adjusting pricing for products with margins below
-                  35%
-                </li>
-                <li>
-                  • Products with high sales volumes but low margins may benefit
-                  from cost optimization
-                </li>
-              </ul>
-            </div>
+            {marginComparisonData.length > 0 && (
+              <div className='mt-6 p-4 bg-blue-50 rounded-md border border-blue-100'>
+                <h4 className='font-medium text-blue-800 mb-2'>
+                  Margin Analysis Insights
+                </h4>
+                <ul className='space-y-1 text-sm text-blue-700'>
+                  <li>
+                    • {productMetrics[0]?.name || 'Product 1'} has the highest
+                    profit margin at{' '}
+                    {formatPercentage(productMetrics[0]?.margin || 0)}
+                  </li>
+                  <li>
+                    • The average profit margin across all products is{' '}
+                    {formatPercentage(
+                      productMetrics.reduce(
+                        (sum, product) => sum + product.margin,
+                        0
+                      ) / Math.max(1, productMetrics.length)
+                    )}
+                  </li>
+                  <li>
+                    • Consider adjusting pricing for products with margins below
+                    35%
+                  </li>
+                  <li>
+                    • Products with high sales volumes but low margins may
+                    benefit from cost optimization
+                  </li>
+                </ul>
+              </div>
+            )}
           </div>
         )}
 
@@ -259,13 +328,7 @@ const MarginAnalysis: React.FC = () => {
                 <ResponsiveContainer width='100%' height='100%'>
                   <PieChart>
                     <Pie
-                      data={[
-                        { name: 'Leather', value: 45 },
-                        { name: 'Hardware', value: 15 },
-                        { name: 'Labor', value: 25 },
-                        { name: 'Overhead', value: 10 },
-                        { name: 'Shipping', value: 5 },
-                      ]}
+                      data={COST_DISTRIBUTION}
                       cx='50%'
                       cy='50%'
                       labelLine={false}
@@ -276,13 +339,7 @@ const MarginAnalysis: React.FC = () => {
                       fill='#8884d8'
                       dataKey='value'
                     >
-                      {[
-                        { name: 'Leather', value: 45 },
-                        { name: 'Hardware', value: 15 },
-                        { name: 'Labor', value: 25 },
-                        { name: 'Overhead', value: 10 },
-                        { name: 'Shipping', value: 5 },
-                      ].map((entry, index) => (
+                      {COST_DISTRIBUTION.map((entry, index) => (
                         <Cell
                           key={`cell-${index}`}
                           fill={COLORS[index % COLORS.length]}
@@ -299,13 +356,7 @@ const MarginAnalysis: React.FC = () => {
                   Cost Distribution
                 </h4>
                 <div className='space-y-2'>
-                  {[
-                    { name: 'Leather', value: 45, color: COLORS[0] },
-                    { name: 'Hardware', value: 15, color: COLORS[1] },
-                    { name: 'Labor', value: 25, color: COLORS[2] },
-                    { name: 'Overhead', value: 10, color: COLORS[3] },
-                    { name: 'Shipping', value: 5, color: COLORS[4] },
-                  ].map((item, index) => (
+                  {COST_DISTRIBUTION.map((item, index) => (
                     <div
                       key={`item-${index}`}
                       className='flex items-center justify-between'
@@ -589,8 +640,11 @@ const MarginAnalysis: React.FC = () => {
                           Price Change
                         </div>
                         <div className='text-xl font-bold text-blue-900'>
-                          {priceChangePercent >= 0 ? '+' : ''}
-                          {(priceChangePercent * 100).toFixed(1)}%
+                          {elasticityResults.priceChangePercent >= 0 ? '+' : ''}
+                          {(elasticityResults.priceChangePercent * 100).toFixed(
+                            1
+                          )}
+                          %
                         </div>
                       </div>
 
@@ -599,8 +653,13 @@ const MarginAnalysis: React.FC = () => {
                           Volume Change
                         </div>
                         <div className='text-xl font-bold text-blue-900'>
-                          {volumeChangePercent >= 0 ? '+' : ''}
-                          {(volumeChangePercent * 100).toFixed(1)}%
+                          {elasticityResults.volumeChangePercent >= 0
+                            ? '+'
+                            : ''}
+                          {(
+                            elasticityResults.volumeChangePercent * 100
+                          ).toFixed(1)}
+                          %
                         </div>
                       </div>
                     </div>
@@ -611,7 +670,7 @@ const MarginAnalysis: React.FC = () => {
                           Current Revenue
                         </div>
                         <div className='text-xl font-bold text-blue-900'>
-                          {formatCurrency(currentRevenue)}
+                          {formatCurrency(elasticityResults.currentRevenue)}
                         </div>
                       </div>
 
@@ -620,7 +679,7 @@ const MarginAnalysis: React.FC = () => {
                           Projected Revenue
                         </div>
                         <div className='text-xl font-bold text-blue-900'>
-                          {formatCurrency(newRevenue)}
+                          {formatCurrency(elasticityResults.newRevenue)}
                         </div>
                       </div>
                     </div>
@@ -631,14 +690,19 @@ const MarginAnalysis: React.FC = () => {
                       </div>
                       <div
                         className={`text-2xl font-bold ${
-                          revenueChange >= 0 ? 'text-green-600' : 'text-red-600'
+                          elasticityResults.revenueChange >= 0
+                            ? 'text-green-600'
+                            : 'text-red-600'
                         }`}
                       >
-                        {revenueChange >= 0 ? '+' : ''}
-                        {formatCurrency(revenueChange)}
+                        {elasticityResults.revenueChange >= 0 ? '+' : ''}
+                        {formatCurrency(elasticityResults.revenueChange)}
                         <span className='text-sm ml-1'>
-                          ({revenueChangePercent >= 0 ? '+' : ''}
-                          {revenueChangePercent.toFixed(1)}%)
+                          (
+                          {elasticityResults.revenueChangePercent >= 0
+                            ? '+'
+                            : ''}
+                          {elasticityResults.revenueChangePercent.toFixed(1)}%)
                         </span>
                       </div>
                     </div>
@@ -656,7 +720,7 @@ const MarginAnalysis: React.FC = () => {
                     tool to predict how price changes may affect your revenue.
                   </p>
                   <div className='mt-3 text-sm text-amber-600 font-medium'>
-                    {revenueChange >= 0
+                    {elasticityResults.revenueChange >= 0
                       ? 'The projected price change is likely to increase total revenue.'
                       : 'The projected price change may decrease revenue. Consider a smaller adjustment.'}
                   </div>

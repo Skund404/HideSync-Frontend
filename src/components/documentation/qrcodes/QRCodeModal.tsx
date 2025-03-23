@@ -1,5 +1,6 @@
+// src/components/documentation/qrcodes/QRCodeModal.tsx
 import { X } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react'; // Changed to QRCodeSVG
+import { QRCodeSVG } from 'qrcode.react'; // Using QRCodeSVG component
 import React from 'react';
 
 interface QRCodeModalProps {
@@ -18,7 +19,7 @@ const QRCodeModal: React.FC<QRCodeModalProps> = ({
   description,
 }) => {
   if (!isOpen) return null;
-
+  
   return (
     <div className='fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center'>
       <div className='bg-white rounded-lg shadow-xl p-6 max-w-md w-full'>
@@ -31,18 +32,15 @@ const QRCodeModal: React.FC<QRCodeModalProps> = ({
             <X size={20} />
           </button>
         </div>
-
         {description && <p className='text-gray-600 mb-4'>{description}</p>}
-
         <div className='flex justify-center mb-4'>
-          <QRCodeSVG // Changed from QRCode to QRCodeSVG
+          <QRCodeSVG
             value={url}
             size={200}
             level='H'
             includeMargin={true}
           />
         </div>
-
         <div className='text-center text-sm text-gray-500'>
           <p>Scan this QR code with your mobile device</p>
           <p className='mt-1 text-xs'>{url}</p>

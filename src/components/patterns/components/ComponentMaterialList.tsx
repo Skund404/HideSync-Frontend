@@ -1,8 +1,11 @@
 // src/components/patterns/components/ComponentMaterialList.tsx
 
-import React, { useEffect, useState } from 'react';
+import { Edit, Trash2 } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useComponentContext } from '../../../context/ComponentContext';
 import { ComponentMaterial } from '../../../types/patternTypes';
+import ErrorMessage from '../../common/ErrorMessage';
+import LoadingSpinner from '../../common/LoadingSpinner';
 import ComponentMaterialForm from './ComponentMaterialForm';
 
 interface ComponentMaterialListProps {
@@ -21,7 +24,7 @@ const ComponentMaterialList: React.FC<ComponentMaterialListProps> = ({
   const [editingMaterial, setEditingMaterial] =
     useState<ComponentMaterial | null>(null);
 
-  const fetchMaterials = async () => {
+  const fetchMaterials = useCallback(async () => {
     try {
       setLoading(true);
       const componentMaterials = await getComponentMaterials(componentId);
@@ -33,11 +36,11 @@ const ComponentMaterialList: React.FC<ComponentMaterialListProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [componentId, getComponentMaterials]);
 
   useEffect(() => {
     fetchMaterials();
-  }, [componentId]);
+  }, [fetchMaterials]);
 
   const handleDelete = async (id: number) => {
     if (window.confirm('Are you sure you want to remove this material?')) {
@@ -57,8 +60,9 @@ const ComponentMaterialList: React.FC<ComponentMaterialListProps> = ({
     setEditingMaterial(null);
   };
 
-  if (loading) return <div className='py-4'>Loading materials...</div>;
-  if (error) return <div className='py-4 text-red-500'>{error}</div>;
+  if (loading)
+    return <LoadingSpinner size='medium' message='Loading materials...' />;
+  if (error) return <ErrorMessage message={error} onRetry={fetchMaterials} />;
 
   return (
     <div>
@@ -126,14 +130,18 @@ const ComponentMaterialList: React.FC<ComponentMaterialListProps> = ({
                         <button
                           onClick={() => setEditingMaterial(material)}
                           className='text-amber-600 hover:text-amber-800 mr-3'
+                          aria-label='Edit material'
                         >
-                          Edit
+                          <Edit className='h-4 w-4 inline' />
+                          <span className='ml-1'>Edit</span>
                         </button>
                         <button
                           onClick={() => handleDelete(material.id)}
                           className='text-red-600 hover:text-red-800'
+                          aria-label='Remove material'
                         >
-                          Remove
+                          <Trash2 className='h-4 w-4 inline' />
+                          <span className='ml-1'>Remove</span>
                         </button>
                       </td>
                     </tr>

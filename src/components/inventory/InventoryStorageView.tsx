@@ -1,3 +1,5 @@
+// src/components/inventory/InventoryStorageView.tsx
+import { AlertCircle, AlertTriangle, Package } from 'lucide-react';
 import React from 'react';
 
 interface InventoryStorageViewProps {
@@ -60,20 +62,7 @@ const InventoryStorageView: React.FC<InventoryStorageViewProps> = ({
       <div className='bg-white shadow-sm rounded-lg p-6 border border-stone-200 text-center'>
         <div className='flex flex-col items-center justify-center py-12'>
           <div className='bg-amber-100 p-4 rounded-full mb-4'>
-            <svg
-              xmlns='http://www.w3.org/2000/svg'
-              className='h-10 w-10 text-amber-600'
-              fill='none'
-              viewBox='0 0 24 24'
-              stroke='currentColor'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={2}
-                d='M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4'
-              />
-            </svg>
+            <Package className='h-10 w-10 text-amber-600' />
           </div>
           <h3 className='text-lg font-medium text-stone-700 mb-2'>
             No Products Found
@@ -122,6 +111,7 @@ const InventoryStorageView: React.FC<InventoryStorageViewProps> = ({
             </h4>
             <div className='grid grid-cols-2 md:grid-cols-3 gap-3'>
               {locationsByType[locationType].map((location) => {
+                const locationId = getLocationId(location);
                 const locationProducts = locationMap[location];
                 const totalItems = locationProducts.length;
                 const lowStockItems = locationProducts.filter(
@@ -135,9 +125,15 @@ const InventoryStorageView: React.FC<InventoryStorageViewProps> = ({
                   <div
                     key={location}
                     className='p-4 rounded-md border border-amber-300 bg-amber-50 hover:shadow-sm transition-shadow cursor-pointer'
+                    data-location-id={locationId}
                   >
-                    <div className='text-sm font-medium text-stone-700'>
-                      {location}
+                    <div className='text-sm font-medium text-stone-700 flex justify-between'>
+                      <span>{location}</span>
+                      {locationId && (
+                        <span className='text-xs bg-amber-200 text-amber-800 px-2 py-0.5 rounded'>
+                          ID: {locationId}
+                        </span>
+                      )}
                     </div>
                     <div className='text-lg font-medium mt-1 text-amber-800'>
                       {totalItems} items
@@ -170,40 +166,14 @@ const InventoryStorageView: React.FC<InventoryStorageViewProps> = ({
 
                     {lowStockItems > 0 && (
                       <div className='mt-2 text-xs text-amber-600 flex items-center'>
-                        <svg
-                          xmlns='http://www.w3.org/2000/svg'
-                          className='h-4 w-4 mr-1'
-                          fill='none'
-                          viewBox='0 0 24 24'
-                          stroke='currentColor'
-                        >
-                          <path
-                            strokeLinecap='round'
-                            strokeLinejoin='round'
-                            strokeWidth={2}
-                            d='M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z'
-                          />
-                        </svg>
+                        <AlertTriangle className='h-4 w-4 mr-1' />
                         {lowStockItems} low stock
                       </div>
                     )}
 
                     {outOfStockItems > 0 && (
                       <div className='mt-1 text-xs text-red-600 flex items-center'>
-                        <svg
-                          xmlns='http://www.w3.org/2000/svg'
-                          className='h-4 w-4 mr-1'
-                          fill='none'
-                          viewBox='0 0 24 24'
-                          stroke='currentColor'
-                        >
-                          <path
-                            strokeLinecap='round'
-                            strokeLinejoin='round'
-                            strokeWidth={2}
-                            d='M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z'
-                          />
-                        </svg>
+                        <AlertCircle className='h-4 w-4 mr-1' />
                         {outOfStockItems} out of stock
                       </div>
                     )}
@@ -248,20 +218,7 @@ const InventoryStorageView: React.FC<InventoryStorageViewProps> = ({
             <span className='text-sm text-stone-600'>Empty Location</span>
           </div>
           <div className='flex items-center'>
-            <svg
-              xmlns='http://www.w3.org/2000/svg'
-              className='h-4 w-4 text-amber-600 mr-2'
-              fill='none'
-              viewBox='0 0 24 24'
-              stroke='currentColor'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={2}
-                d='M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z'
-              />
-            </svg>
+            <AlertTriangle className='h-4 w-4 text-amber-600 mr-2' />
             <span className='text-sm text-stone-600'>Low Stock Items</span>
           </div>
         </div>

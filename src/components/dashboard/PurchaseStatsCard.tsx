@@ -6,6 +6,19 @@ import React from 'react';
 const PurchaseStatsCard: React.FC = () => {
   const { totalOrders, inProgress, spendingTrend } = usePurchaseMetrics();
 
+  // Calculate percentage of orders in progress
+  const progressPercentage =
+    totalOrders > 0 ? Math.min(100, (inProgress / totalOrders) * 100) : 0;
+
+  // Add trending info to the detail string instead of using a separate trend prop
+  const detailText = `${inProgress} in progress${
+    spendingTrend !== 0
+      ? ` • ${spendingTrend > 0 ? '↑' : '↓'} ${Math.abs(spendingTrend).toFixed(
+          1
+        )}%`
+      : ''
+  }`;
+
   return (
     <StatCard
       title='Purchase Orders'
@@ -27,19 +40,8 @@ const PurchaseStatsCard: React.FC = () => {
         </svg>
       }
       color='amber'
-      detail={`${inProgress} in progress`}
-      percentage={Math.min(
-        100,
-        totalOrders > 0 ? (inProgress / totalOrders) * 100 : 0
-      )}
-      trend={
-        spendingTrend !== 0
-          ? {
-              value: `${Math.abs(spendingTrend).toFixed(1)}%`,
-              isPositive: spendingTrend > 0,
-            }
-          : undefined
-      }
+      detail={detailText}
+      percentage={progressPercentage}
     />
   );
 };

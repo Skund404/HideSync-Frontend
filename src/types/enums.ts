@@ -309,6 +309,7 @@ export enum HardwareType {
   THREE_BAR_SLIDE = 'three_bar_slide',
   SLOTTED_BUCKLE = 'slotted_buckle',
   LOCKING_BUCKLE = 'locking_buckle',
+  MAGNETIC_CLASP = 'magnetic_clasp',
 
   // Snaps and closures
   SNAP = 'snap',
@@ -526,6 +527,9 @@ export enum HardwareFinish {
   MILITARY_SPEC = 'military_spec',
   HYPOALLERGENIC = 'hypoallergenic',
   OTHER = 'other',
+  BLACK = 'black',
+  GOLD = 'gold',
+  SILVER = 'silver',
 }
 
 export enum LeatherType {
@@ -539,6 +543,7 @@ export enum LeatherType {
   BARK_TANNED = 'bark_tanned',
   FORMALDEHYDE_TANNED = 'formaldehyde_tanned',
   SMOKE_TANNED = 'smoke_tanned',
+  COMBINATION = 'combination',
 
   // Leather Grades
   FULL_GRAIN = 'full_grain',
@@ -648,6 +653,9 @@ export enum LeatherFinish {
   HAND_FINISHED = 'hand_finished',
   MATTE_FINISH = 'matte_finish',
   GLOSSY_FINISH = 'glossy_finish',
+  PULL_UP = 'pull_up',
+  NUBUCK = 'nubuck',
+  SUEDE = 'suede',
 
   // Specialty finishes
   TOOLED = 'tooled',
@@ -837,7 +845,6 @@ export enum ProjectType {
   BAG = 'BAG',
   CASE = 'CASE',
   ACCESSORY = 'ACCESSORY',
-  LEATHER = 'LEATHER',
 }
 
 /**
@@ -913,6 +920,9 @@ export enum ProjectStatus {
   PLANNED = 'planned',
   MATERIALS_READY = 'materials_ready',
   IN_PROGRESS = 'in_progress',
+
+  FINISHING = 'finishing',
+  CANCELED = 'canceled',
 }
 
 export enum SkillLevel {
@@ -1267,6 +1277,8 @@ export enum InventoryAdjustmentType {
   DISCONTINUED = 'discontinued',
   WRITE_OFF = 'write_off',
   SHRINKAGE = 'shrinkage',
+  LOSS = 'loss',
+  OTHER = 'other',
 }
 
 export enum SupplierStatus {
@@ -1528,5 +1540,117 @@ export enum MaterialStatus {
   IN_STOCK = 'in_stock',
   LOW_STOCK = 'low_stock',
   OUT_OF_STOCK = 'out_of_stock',
+  ABUNDANT = 'abundant',
+  SUFFICIENT = 'sufficient',
+  CRITICALLY_LOW = 'critically_low',
+  DISCONTINUED = 'discontinued',
+  ON_ORDER = 'on_order',
+  BACKORDERED = 'backordered',
+  PRE_ORDER = 'pre_order',
+  AVAILABLE = 'available',
   // Add any other necessary values
+}
+
+/**
+ * Enum representing purchase order statuses
+ * From ER diagram enum status "PLANNING/ORDERED/RECEIVED/etc."
+ */
+export enum PurchaseOrderStatus {
+  PLANNING = 'planning',
+  PENDING_APPROVAL = 'pending_approval',
+  APPROVED = 'approved',
+  SUBMITTED_TO_SUPPLIER = 'submitted_to_supplier',
+  ACKNOWLEDGED = 'acknowledged',
+  BACKORDERED = 'backordered',
+  PROCESSING = 'processing',
+  PARTIAL_SHIPMENT = 'partial_shipment',
+  SHIPPED = 'shipped',
+  IN_TRANSIT = 'in_transit',
+  DELIVERED = 'delivered',
+  QUALITY_INSPECTION = 'quality_inspection',
+  PAYMENT_PENDING = 'payment_pending',
+  COMPLETE = 'complete',
+  CANCELLED = 'cancelled',
+  DISPUTED = 'disputed',
+
+  // Legacy statuses for backward compatibility
+  DRAFT = 'draft',
+  ORDERED = 'ordered',
+  PARTIALLY_RECEIVED = 'partially_received',
+  RECEIVED = 'received',
+}
+
+// Tool Status (from ER diagram)
+export enum ToolStatus {
+  IN_STOCK = 'in_stock',
+  CHECKED_OUT = 'checked_out',
+  MAINTENANCE = 'maintenance',
+  DAMAGED = 'damaged',
+  LOST = 'lost',
+}
+
+// Storage Section (from ER diagram)
+export enum StorageSection {
+  MAIN_WORKSHOP = 'main_workshop',
+  TOOL_ROOM = 'tool_room',
+  STORAGE_ROOM = 'storage_room',
+  SUPPLY_CLOSET = 'supply_closet',
+  ARCHIVE = 'archive',
+}
+
+// Storage Location Status (from ER diagram)
+export enum StorageLocationStatus {
+  ACTIVE = 'active',
+  FULL = 'full',
+  MAINTENANCE = 'maintenance',
+  INACTIVE = 'inactive',
+}
+
+// Tannage Types (from ER diagram)
+export enum TannageType {
+  VEGETABLE = 'vegetable',
+  CHROME = 'chrome',
+  COMBINATION = 'combination',
+  ALUM = 'alum',
+}
+
+// Animal Source (from ER diagram)
+export enum AnimalSource {
+  COWHIDE = 'cowhide',
+  CALFSKIN = 'calfskin',
+  GOATSKIN = 'goatskin',
+  SHEEPSKIN = 'sheepskin',
+  DEERSKIN = 'deerskin',
+  BUFFALO = 'buffalo',
+  OTHER = 'other',
+}
+
+// Supplies Material Type (from ER diagram)
+export enum SuppliesMaterialType {
+  THREAD = 'thread',
+  DYE = 'dye',
+  ADHESIVE = 'adhesive',
+  EDGE_PAINT = 'edge_paint',
+  FINISH = 'finish',
+  TEMPLATE = 'template',
+  TOOL_ACCESSORY = 'tool_accessory',
+  OTHER = 'other',
+}
+
+export enum DocumentationCategory {
+  GETTING_STARTED = 'GETTING_STARTED',
+  INVENTORY = 'INVENTORY',
+  MATERIALS = 'MATERIALS',
+  PROJECTS = 'PROJECTS',
+  SALES = 'SALES',
+  PURCHASES = 'PURCHASES',
+  TOOLS = 'TOOLS',
+  PATTERNS = 'PATTERNS',
+  STORAGE = 'STORAGE',
+  SUPPLIERS = 'SUPPLIERS',
+  INTEGRATIONS = 'INTEGRATIONS',
+  SECURITY = 'SECURITY',
+  SETTINGS = 'SETTINGS',
+  TROUBLESHOOTING = 'TROUBLESHOOTING',
+  OTHER = 'OTHER',
 }

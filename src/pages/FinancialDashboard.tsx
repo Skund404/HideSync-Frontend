@@ -7,7 +7,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import React, { useState } from 'react';
-import MarginAnalysis from '../components/financial/analysis/MarginAnalysis'; // Correct import
+import MarginAnalysis from '../components/financial/analysis/MarginAnalysis';
 import MaterialCostChart from '../components/financial/charts/MaterialCostChart';
 import ProductTypeChart from '../components/financial/charts/ProductTypeChart';
 import RevenueChart from '../components/financial/charts/RevenueChart';
@@ -22,10 +22,19 @@ import TimeframeSelector from '../components/financial/TimeframeSelector';
 import PricingReferenceSheet from '../components/financial/workshop/PricingReferenceSheet';
 import { useFinancial } from '../context/FinancialContext';
 import { TimeFrame } from '../types/financialTypes';
+import LoadingSpinner from '../components/common/LoadingSpinner';
+import ErrorMessage from '../components/common/ErrorMessage';
 
 const FinancialDashboard: React.FC = () => {
-  const { summary, loading, error, filters, setFilters, refreshData } =
-    useFinancial();
+  const { 
+    summary, 
+    loading, 
+    loadingState, 
+    error, 
+    filters, 
+    setFilters, 
+    refreshData 
+  } = useFinancial();
 
   const [activeTab, setActiveTab] = useState<
     | 'overview'
@@ -47,21 +56,26 @@ const FinancialDashboard: React.FC = () => {
     await refreshData();
   };
 
-  if (loading && !summary) {
+  // Show full page loading state only on initial load when everything is loading
+  const isInitialLoading = loading && !summary;
+
+  if (isInitialLoading) {
     return (
       <div className='flex-1 flex items-center justify-center'>
-        <div className='text-center'>
-          <div className='inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-amber-600'></div>
-          <p className='mt-2 text-stone-600'>Loading financial data...</p>
-        </div>
+        <LoadingSpinner 
+          size="large" 
+          color="amber" 
+          message="Loading financial data..."
+        />
       </div>
     );
   }
 
-  if (error) {
+  // Show full page error only for critical errors that prevent rendering
+  if (error && !summary) {
     return (
       <div className='flex-1 flex items-center justify-center'>
-        <div className='bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md'>
+        <div className='bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md max-w-lg'>
           <p className='font-medium'>Error loading financial data</p>
           <p className='text-sm mt-1'>{error}</p>
           <button
@@ -105,15 +119,35 @@ const FinancialDashboard: React.FC = () => {
 
           <button
             onClick={handleRefresh}
-            className='bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center'
+            disabled={loading}
+            className='bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center disabled:opacity-50 disabled:cursor-not-allowed'
           >
-            <RefreshCw className='h-4 w-4 mr-2' />
-            Refresh Data
+            {loading ? (
+              <>
+                <div className='animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2'></div>
+                Refreshing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className='h-4 w-4 mr-2' />
+                Refresh Data
+              </>
+            )}
           </button>
         </div>
       </header>
 
       <main className='flex-1 overflow-y-auto bg-stone-50 p-6'>
+        {/* Global error message if present but not severe enough for full page error */}
+        {error && summary && (
+          <div className='mb-6'>
+            <ErrorMessage 
+              message={error} 
+              onRetry={handleRefresh} 
+            />
+          </div>
+        )}
+
         <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6'>
           {summary && (
             <>

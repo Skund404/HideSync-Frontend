@@ -1,12 +1,14 @@
-import { useMaterials } from '@/context/MaterialsContext';
-import { MaterialType } from '@/types/materialTypes';
+// src/components/materials/common/MaterialsFilter.tsx
+import { useMaterials } from '../../../context/MaterialsContext';
+import { MaterialType } from '../../../types/materialTypes';
 import React from 'react';
 import ViewToggle from './ViewToggle';
+import { Filter } from 'lucide-react';
 
 // Import specific filter components
-import HardwareFilters from '@/components/materials/hardware/HardwareFilters';
-import LeatherFilters from '@/components/materials/leather/LeatherFilters';
-import SuppliesFilters from '@/components/materials/supplies/SuppliesFilters';
+import HardwareFilters from '../hardware/HardwareFilters';
+import LeatherFilters from '../leather/LeatherFilters';
+import SuppliesFilters from '../supplies/SuppliesFilters';
 
 const MaterialsFilter: React.FC = () => {
   const {
@@ -18,6 +20,9 @@ const MaterialsFilter: React.FC = () => {
     filterSupplier,
     setFilterSupplier,
     clearFilters,
+    storageLocations,
+    suppliers,
+    loading
   } = useMaterials();
 
   // Render specific filter component based on active tab
@@ -76,14 +81,14 @@ const MaterialsFilter: React.FC = () => {
               value={filterStorage || ''}
               onChange={(e) => setFilterStorage(e.target.value || null)}
               className='bg-white border border-stone-300 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500'
+              disabled={loading}
             >
               <option value=''>All Locations</option>
-              <option value='Shelf'>Shelves</option>
-              <option value='Drawer'>Drawers</option>
-              <option value='Bin'>Bins</option>
-              <option value='Cabinet'>Cabinets</option>
-              <option value='Rack'>Racks</option>
-              <option value='Safe'>Safe Storage</option>
+              {storageLocations.map(location => (
+                <option key={location.id} value={location.id.toString()}>
+                  {location.name || `${location.type} ${location.id}`}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -99,36 +104,23 @@ const MaterialsFilter: React.FC = () => {
               value={filterSupplier || ''}
               onChange={(e) => setFilterSupplier(e.target.value || null)}
               className='bg-white border border-stone-300 rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500'
+              disabled={loading}
             >
               <option value=''>All Suppliers</option>
-              <option value='Horween Leather'>Horween Leather</option>
-              <option value='Wickett & Craig'>Wickett & Craig</option>
-              <option value='Sedgwick'>Sedgwick</option>
-              <option value='Tandy Leather'>Tandy Leather</option>
-              <option value='Rocky Mountain Leather'>
-                Rocky Mountain Leather
-              </option>
-              <option value='Buckle Guy'>Buckle Guy</option>
-              <option value='Ohio Travel Bag'>Ohio Travel Bag</option>
-              <option value='Wawak'>Wawak</option>
-              <option value='Craft & Lore'>Craft & Lore</option>
-              <option value="Fiebing's">Fiebing's</option>
-              <option value='Vernis Edge'>Vernis Edge</option>
-              <option value='Badalassi Carlo'>Badalassi Carlo</option>
-              <option value='Quality Leather Supply'>
-                Quality Leather Supply
-              </option>
-              <option value='Craft Supplies Inc.'>Craft Supplies Inc.</option>
-              <option value='Hardware Emporium'>Hardware Emporium</option>
-              <option value='Fine Leatherworking'>Fine Leatherworking</option>
+              {suppliers.map(supplier => (
+                <option key={supplier.id} value={supplier.id.toString()}>
+                  {supplier.name}
+                </option>
+              ))}
             </select>
           </div>
 
           {/* Reset filters button */}
           <button
             onClick={clearFilters}
-            className='mt-6 text-sm text-amber-600 hover:text-amber-800 font-medium'
+            className='mt-6 text-sm text-amber-600 hover:text-amber-800 font-medium flex items-center'
           >
+            <Filter className="w-4 h-4 mr-1" />
             Reset Filters
           </button>
         </div>

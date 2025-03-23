@@ -3,21 +3,26 @@
 // This component displays the tool inventory list in a table format.
 // It includes filtering, sorting, and pagination functionality.
 // Used in the Tool Management view's Inventory tab.
+// Updated to work with API integration.
 
 import ToolDetailModal from '@/components/tools/common/ToolDetailModal';
 import { useTools } from '@/context/ToolContext';
 import { Tool, ToolStatus } from '@/types/toolType';
-import { ChevronDown, ChevronUp, Edit, Eye } from 'lucide-react';
-import React, { useState } from 'react';
+import { ChevronDown, ChevronUp, Edit, Eye, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import LoadingSpinner from '@/components/common/LoadingSpinner';
+import ErrorMessage from '@/components/common/ErrorMessage';
 
 interface ToolInventoryListProps {
   onEditTool?: (tool: Tool) => void;
+  filters?: any;
 }
 
 const ToolInventoryList: React.FC<ToolInventoryListProps> = ({
   onEditTool,
+  filters,
 }) => {
-  const { tools } = useTools();
+  const { tools, loading, error, refreshTools, applyFilters, resetFilters } = useTools();
 
   // State for sorting
   const [sortField, setSortField] = useState<keyof Tool>('name');
@@ -30,6 +35,16 @@ const ToolInventoryList: React.FC<ToolInventoryListProps> = ({
   // State for detail modal
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // State for refresh button
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Apply filters when they change
+  useEffect(() => {
+    if (filters && Object.keys(filters).length > 0) {
+      applyFilters(filters);
+    }
+  }, [filters, applyFilters]);
 
   // Handle sort change
   const handleSort = (field: keyof Tool) => {
@@ -41,7 +56,17 @@ const ToolInventoryList: React.FC<ToolInventoryListProps> = ({
     }
   };
 
-  // Get sorted and paginated tools
+  // Handle refresh
+  const handleRefresh = useCallback(async () => {
+    try {
+      setIsRefreshing(true);
+      await refreshTools();
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refreshTools]);
+
+  // Get sorted tools
   const getSortedTools = () => {
     return [...tools].sort((a, b) => {
       const aValue = a[sortField];
@@ -111,8 +136,49 @@ const ToolInventoryList: React.FC<ToolInventoryListProps> = ({
     }
   };
 
+  // Render loading state
+  if (loading.tools && !isRefreshing) {
+    return (
+      <div className='bg-white rounded-lg shadow-sm border border-stone-200 p-6'>
+        <LoadingSpinner size="medium" color="amber" message="Loading tools..." />
+      </div>
+    );
+  }
+
+  // Render error state
+  if (error.tools) {
+    return (
+      <div className='bg-white rounded-lg shadow-sm border border-stone-200 p-6'>
+        <ErrorMessage 
+          message={error.tools} 
+          onRetry={refreshTools} 
+        />
+      </div>
+    );
+  }
+
+  // Render empty state
+  if (tools.length === 0) {
+    return (
+      <div className='bg-white rounded-lg shadow-sm border border-stone-200 p-6 text-center'>
+        <p className='text-stone-500 mb-4'>No tools found</p>
+        <button
+          onClick={filters ? resetFilters : refreshTools}
+          className='px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-md'
+        >
+          {filters ? 'Clear Filters' : 'Refresh'}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className='bg-white rounded-lg shadow-sm border border-stone-200 overflow-hidden'>
+      {isRefreshing && (
+        <div className='p-2 bg-amber-50 text-amber-700 text-sm text-center'>
+          Refreshing data...
+        </div>
+      )}
       <div className='overflow-x-auto'>
         <table className='w-full'>
           <thead>
@@ -188,7 +254,17 @@ const ToolInventoryList: React.FC<ToolInventoryListProps> = ({
                 </div>
               </th>
               <th className='text-left text-xs font-medium text-stone-500 uppercase tracking-wider py-3 px-4'>
-                Actions
+                <div className='flex items-center justify-between'>
+                  <span>Actions</span>
+                  <button 
+                    onClick={handleRefresh} 
+                    className='text-stone-500 hover:text-stone-700 p-1 rounded-full'
+                    disabled={isRefreshing}
+                    title="Refresh tools"
+                  >
+                    <RefreshCw className='h-4 w-4' />
+                  </button>
+                </div>
               </th>
             </tr>
           </thead>

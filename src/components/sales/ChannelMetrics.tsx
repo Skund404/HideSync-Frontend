@@ -1,3 +1,4 @@
+// src/components/sales/ChannelMetrics.tsx
 import React, { useEffect, useState } from 'react';
 import { useSales } from '../../context/SalesContext';
 import { SalesChannel } from '../../types/salesTypes';
@@ -55,7 +56,10 @@ const ChannelMetrics: React.FC = () => {
     });
 
     // Calculate total metrics
-    const total = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
+    const total = filteredSales.reduce(
+      (sum, sale) => sum + sale.totalAmount,
+      0
+    );
     const orders = filteredSales.length;
     const fees = filteredSales.reduce(
       (sum, sale) => sum + (sale.platformFees || 0),
@@ -86,7 +90,7 @@ const ChannelMetrics: React.FC = () => {
     filteredSales.forEach((sale) => {
       const channel = sale.channel;
       channelSales[channel].orderCount += 1;
-      channelSales[channel].revenue += sale.total;
+      channelSales[channel].revenue += sale.totalAmount;
       channelSales[channel].platformFees += sale.platformFees || 0;
     });
 
@@ -150,6 +154,8 @@ const ChannelMetrics: React.FC = () => {
         return 'bg-purple-500';
       case SalesChannel.CUSTOM_ORDER:
         return 'bg-pink-500';
+      case SalesChannel.OTHER:
+        return 'bg-gray-500';
       default:
         return 'bg-gray-500';
     }

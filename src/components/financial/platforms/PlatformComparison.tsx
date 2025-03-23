@@ -1,3 +1,4 @@
+// src/components/financial/platforms/PlatformComparison.tsx
 import React, { useState } from 'react';
 import {
   Bar,
@@ -14,20 +15,47 @@ import {
   formatCurrency,
   formatPercentage,
 } from '../../../utils/financialHelpers';
+import LoadingSpinner from '../../common/LoadingSpinner';
+import ErrorMessage from '../../common/ErrorMessage';
 
 type MetricType = 'sales' | 'profit' | 'margin' | 'orders' | 'fees';
 
 const PlatformComparison: React.FC = () => {
-  const { platformPerformance, loading } = useFinancial();
+  const { platformPerformance, loading, loadingState, error, refreshData } = useFinancial();
   const [activeMetric, setActiveMetric] = useState<MetricType>('sales');
 
-  if (loading || !platformPerformance.length) {
+  // Specific loading state for this component
+  if (loading || loadingState.platformPerformance) {
+    return (
+      <div className='flex items-center justify-center h-full'>
+        <LoadingSpinner
+          size="medium"
+          color="amber"
+          message="Loading platform data..."
+        />
+      </div>
+    );
+  }
+
+  // Handle error state with retry option
+  if (error) {
+    return (
+      <div className='flex items-center justify-center h-full'>
+        <ErrorMessage 
+          message="Unable to load platform comparison data. Please try again." 
+          onRetry={refreshData} 
+        />
+      </div>
+    );
+  }
+
+  // Handle empty state
+  if (!platformPerformance.length) {
     return (
       <div className='flex items-center justify-center h-full'>
         <div className='text-center'>
-          <div className='inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-600'></div>
-          <p className='mt-2 text-sm text-stone-500'>
-            Loading comparison data...
+          <p className='text-stone-500'>
+            No platform performance data available for the selected period
           </p>
         </div>
       </div>
@@ -164,6 +192,7 @@ const PlatformComparison: React.FC = () => {
               name={
                 activeMetric.charAt(0).toUpperCase() + activeMetric.slice(1)
               }
+              animationDuration={500}
             />
           </BarChart>
         </ResponsiveContainer>

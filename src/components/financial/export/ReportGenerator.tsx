@@ -7,9 +7,11 @@ import {
   FileText,
   Printer,
 } from 'lucide-react';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useFinancial } from '../../../context/FinancialContext';
 import { TimeFrame } from '../../../types/financialTypes';
+import ErrorMessage from '../../common/ErrorMessage';
+import LoadingSpinner from '../../common/LoadingSpinner';
 
 type ReportType = 'executive' | 'detailed' | 'cost' | 'platform' | 'custom';
 type ReportPeriod = 'current' | 'comparative';
@@ -21,6 +23,9 @@ const ReportGenerator: React.FC = () => {
     productMetrics,
     platformPerformance,
     filters,
+    loading,
+    error,
+    exportData, // Use exportData from context
   } = useFinancial();
 
   const [reportType, setReportType] = useState<ReportType>('executive');
@@ -38,6 +43,7 @@ const ReportGenerator: React.FC = () => {
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [reportGenerated, setReportGenerated] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   // Use useCallback for event handler functions
   const toggleSection = useCallback((section: keyof typeof includeSections) => {
@@ -120,15 +126,52 @@ const ReportGenerator: React.FC = () => {
     }
   }, [filters.timeFrame]);
 
-  // Simulate report generation
-  const generateReport = () => {
-    setIsGenerating(true);
+  // Helper function to convert the UI-specific section names to the API-expected format
+  const convertToApiSections = useMemo(() => {
+    return {
+      revenueData: includeSections.revenueTrends,
+      materialCosts: includeSections.costBreakdown,
+      productMetrics: includeSections.productAnalysis,
+      projectFinancials: includeSections.projectPerformance,
+      platformData: includeSections.platformComparison,
+      costInsights: false, // Default to false unless specifically needed
+      pricingReferences: false, // Default to false unless specifically needed
+    };
+  }, [includeSections]);
 
-    // Simulate a delay for report generation
-    setTimeout(() => {
-      setIsGenerating(false);
+  // Generate report
+  const generateReport = async () => {
+    setIsGenerating(true);
+    setGenerationError(null);
+
+    try {
+      // If exportData function exists, call it with the proper format
+      if (typeof exportData === 'function') {
+        const success = await exportData('pdf', {
+          format: 'pdf',
+          timeframe: filters.timeFrame,
+          includeSections: convertToApiSections,
+        });
+
+        if (!success) {
+          throw new Error('Failed to generate report');
+        }
+      } else {
+        // For demo purposes, simulate a delay
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+
       setReportGenerated(true);
-    }, 1500);
+    } catch (err) {
+      console.error('Error generating report:', err);
+      setGenerationError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to generate report. Please try again.'
+      );
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   // Preview report
@@ -138,8 +181,39 @@ const ReportGenerator: React.FC = () => {
     alert('Report preview functionality would be shown here');
   };
 
+  // Show loading state
+  if (loading) {
+    return (
+      <div className='flex items-center justify-center h-64'>
+        <LoadingSpinner
+          size='medium'
+          color='amber'
+          message='Loading financial data...'
+        />
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className='flex items-center justify-center h-64'>
+        <ErrorMessage
+          message='Unable to load financial data. Please try again later.'
+          variant='critical'
+        />
+      </div>
+    );
+  }
+
   return (
     <div className='space-y-6'>
+      {generationError && (
+        <div className='mb-4'>
+          <ErrorMessage message={generationError} />
+        </div>
+      )}
+
       <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
         {/* Report Configuration */}
         <div>
@@ -301,9 +375,61 @@ const ReportGenerator: React.FC = () => {
                   </p>
                 </div>
 
-                {/* Placeholder for report content */}
-                <div className='text-center py-16'>
-                  <p className='text-stone-500'>Report preview content</p>
+                {/* Preview of report sections */}
+                <div className='space-y-4'>
+                  {includeSections.summary && (
+                    <div className='p-3 border rounded border-stone-200'>
+                      <h2 className='text-md font-medium mb-2'>
+                        Financial Summary
+                      </h2>
+                      <div className='grid grid-cols-2 gap-2 text-sm'>
+                        <div className='text-stone-500'>Monthly Revenue:</div>
+                        <div className='text-right font-medium'>
+                          ${summary?.monthlyRevenue?.toLocaleString() || 'N/A'}
+                        </div>
+                        <div className='text-stone-500'>Average Margin:</div>
+                        <div className='text-right font-medium'>
+                          {summary?.averageMargin?.toFixed(1) || 'N/A'}%
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {includeSections.revenueTrends &&
+                    revenueTrends.length > 0 && (
+                      <div className='p-3 border rounded border-stone-200'>
+                        <h2 className='text-md font-medium mb-2'>
+                          Revenue Trends
+                        </h2>
+                        <p className='text-sm text-stone-500'>
+                          Showing data for {revenueTrends.length} months
+                        </p>
+                      </div>
+                    )}
+
+                  {includeSections.productAnalysis &&
+                    productMetrics.length > 0 && (
+                      <div className='p-3 border rounded border-stone-200'>
+                        <h2 className='text-md font-medium mb-2'>
+                          Product Analysis
+                        </h2>
+                        <p className='text-sm text-stone-500'>
+                          Analyzing {productMetrics.length} product types
+                        </p>
+                      </div>
+                    )}
+
+                  {includeSections.platformComparison &&
+                    platformPerformance.length > 0 && (
+                      <div className='p-3 border rounded border-stone-200'>
+                        <h2 className='text-md font-medium mb-2'>
+                          Platform Comparison
+                        </h2>
+                        <p className='text-sm text-stone-500'>
+                          Comparing {platformPerformance.length} sales platforms
+                        </p>
+                      </div>
+                    )}
                 </div>
               </div>
             ) : (

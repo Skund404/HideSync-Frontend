@@ -1,212 +1,129 @@
 // src/hooks/usePatterns.ts
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { usePatternContext } from '../context/PatternContext';
 import { EnumTypes } from '../types';
 import { Pattern, PatternFilters } from '../types/patternTypes';
+import { ApiError } from '../services/api-client';
 
-interface UsePatternsResult {
-  // State
-  patterns: Pattern[];
+interface UsePatternResult {
+  // Existing properties
   filteredPatterns: Pattern[];
-  activePattern: Pattern | null;
   loading: boolean;
   error: string | null;
-
-  // Pattern view state
   viewMode: 'grid' | 'list';
-  activeTab: 'all' | 'favorites' | 'recent';
-  filters: PatternFilters;
-
-  // Actions
   setViewMode: (mode: 'grid' | 'list') => void;
+  activeTab: 'all' | 'favorites' | 'recent';
   setActiveTab: (tab: 'all' | 'favorites' | 'recent') => void;
+  filters: PatternFilters;
   setFilters: (filters: PatternFilters) => void;
-  updateFilter: <K extends keyof PatternFilters>(
-    key: K,
-    value: PatternFilters[K]
-  ) => void;
-  clearFilters: () => void;
-  setActivePattern: (pattern: Pattern | null) => void;
-
-  // Pattern operations
+  skillLevels: { value: string; label: string }[];
+  projectTypes: { value: string; label: string }[];
+  refreshPatterns: () => Promise<void>;
+  
+  // Add CRUD operations
+  getPatternById: (id: number) => Promise<Pattern | null>;
   addPattern: (pattern: Omit<Pattern, 'id'>) => Promise<Pattern>;
   updatePattern: (id: number, pattern: Partial<Pattern>) => Promise<Pattern>;
   deletePattern: (id: number) => Promise<boolean>;
   toggleFavorite: (id: number) => Promise<Pattern>;
-  refreshPatterns: () => Promise<void>;
-
-  // Derived data
-  skillLevels: Array<{ label: string; value: string }>;
-  projectTypes: Array<{ label: string; value: string }>;
-  patternsBySkillLevel: Record<string, number>;
-  patternsByProjectType: Record<string, number>;
-  recentPatterns: Pattern[];
-  favoritePatterns: Pattern[];
 }
 
-export const usePatterns = (): UsePatternsResult => {
-  // Get pattern context
-  const {
-    patterns,
-    loading,
-    error,
+export const usePatterns = (): UsePatternResult => {
+  const { 
+    patterns, 
+    loading, 
+    error, 
+    filterPatterns, 
+    refreshPatterns,
     getPatternById,
     addPattern,
     updatePattern,
     deletePattern,
-    toggleFavorite,
-    filterPatterns,
-    refreshPatterns,
+    toggleFavorite
   } = usePatternContext();
-
-  // Local state
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [activeTab, setActiveTab] = useState<'all' | 'favorites' | 'recent'>(
-    'all'
-  );
-  const [filters, setFilters] = useState<PatternFilters>({
-    searchQuery: '',
-    skillLevel: '',
-    projectType: '',
-    tags: [],
+  
+  // Application state
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
+    const savedMode = localStorage.getItem('patternViewMode');
+    return (savedMode as 'grid' | 'list') || 'grid';
   });
-  const [activePattern, setActivePattern] = useState<Pattern | null>(null);
-
-  // Update a single filter
-  const updateFilter = useCallback(
-    <K extends keyof PatternFilters>(key: K, value: PatternFilters[K]) => {
-      setFilters((prev) => ({
-        ...prev,
-        [key]: value,
-      }));
-    },
-    []
-  );
-
-  // Clear all filters
-  const clearFilters = useCallback(() => {
-    setFilters({
-      searchQuery: '',
-      skillLevel: '',
-      projectType: '',
-      tags: [],
-    });
-  }, []);
-
-  // Compute filtered patterns based on active tab and filters
-  const filteredPatterns = useMemo(() => {
-    const filtered = filterPatterns(filters);
-
-    switch (activeTab) {
-      case 'favorites':
-        return filtered.filter((p) => p.isFavorite);
-      case 'recent':
-        return filtered
-          .sort(
-            (a, b) =>
-              new Date(b.modifiedAt).getTime() -
-              new Date(a.modifiedAt).getTime()
-          )
-          .slice(0, 6);
-      case 'all':
-      default:
-        return filtered;
+  const [activeTab, setActiveTab] = useState<'all' | 'favorites' | 'recent'>('all');
+  const [filters, setFilters] = useState<PatternFilters>({});
+  const [filteredPatterns, setFilteredPatterns] = useState<Pattern[]>([]);
+  const [isFiltering, setIsFiltering] = useState(false);
+  const [filterError, setFilterError] = useState<string | null>(null);
+  
+  // Options for dropdown menus
+  const skillLevels = Object.values(EnumTypes.SkillLevel).map((level) => ({
+    value: level.toString(),
+    label: level.toString().replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+  }));
+  
+  const projectTypes = Object.values(EnumTypes.ProjectType).map((type) => ({
+    value: type.toString(),
+    label: type.toString().replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+  }));
+  
+  // Save view mode to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('patternViewMode', viewMode);
+  }, [viewMode]);
+  
+  // Apply filters from API or locally
+  const applyFilters = useCallback(async () => {
+    setIsFiltering(true);
+    setFilterError(null);
+    try {
+      // Apply API-based filtering
+      const filtered = await filterPatterns({
+        ...filters,
+        favorite: activeTab === 'favorites' ? true : undefined,
+      });
+      
+      // Apply 'recent' filtering locally if needed
+      if (activeTab === 'recent') {
+        filtered.sort((a, b) => {
+          return new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime();
+        });
+      }
+      
+      setFilteredPatterns(filtered);
+    } catch (err) {
+      const apiError = err as ApiError;
+      setFilterError(apiError.message || 'Error filtering patterns');
+      // Fall back to showing all patterns
+      setFilteredPatterns(patterns);
+    } finally {
+      setIsFiltering(false);
     }
-  }, [activeTab, filters, patterns, filterPatterns]);
-
-  // Prepare dropdown options for skill levels
-  const skillLevels = useMemo(() => {
-    return Object.entries(EnumTypes.SkillLevel).map(([key, value]) => ({
-      label: key
-        .split('_')
-        .map(
-          (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-        )
-        .join(' '),
-      value,
-    }));
-  }, []);
-
-  // Prepare dropdown options for project types
-  const projectTypes = useMemo(() => {
-    return Object.entries(EnumTypes.ProjectType).map(([key, value]) => ({
-      label: key
-        .split('_')
-        .map(
-          (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-        )
-        .join(' '),
-      value,
-    }));
-  }, []);
-
-  // Count patterns by skill level
-  const patternsBySkillLevel = useMemo(() => {
-    return patterns.reduce((acc, pattern) => {
-      const level = pattern.skillLevel.toString();
-      acc[level] = (acc[level] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-  }, [patterns]);
-
-  // Count patterns by project type
-  const patternsByProjectType = useMemo(() => {
-    return patterns.reduce((acc, pattern) => {
-      const type = pattern.projectType.toString();
-      acc[type] = (acc[type] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-  }, [patterns]);
-
-  // Get recent patterns
-  const recentPatterns = useMemo(() => {
-    return [...patterns]
-      .sort(
-        (a, b) =>
-          new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
-      )
-      .slice(0, 6);
-  }, [patterns]);
-
-  // Get favorite patterns
-  const favoritePatterns = useMemo(() => {
-    return patterns.filter((p) => p.isFavorite);
-  }, [patterns]);
-
+  }, [filters, activeTab, filterPatterns, patterns]);
+  
+  // Apply filters when patterns, filters, or activeTab changes
+  useEffect(() => {
+    applyFilters();
+  }, [filters, activeTab, patterns, applyFilters]);
+  
   return {
-    // State
-    patterns,
     filteredPatterns,
-    activePattern,
-    loading,
-    error,
-
-    // Pattern view state
+    // Combine loading states
+    loading: loading || isFiltering,
+    // Show first error encountered
+    error: error || filterError,
     viewMode,
-    activeTab,
-    filters,
-
-    // Actions
     setViewMode,
+    activeTab,
     setActiveTab,
+    filters,
     setFilters,
-    updateFilter,
-    clearFilters,
-    setActivePattern,
-
-    // Pattern operations
+    skillLevels,
+    projectTypes,
+    refreshPatterns,
+    
+    // Add CRUD operations to the return value
+    getPatternById,
     addPattern,
     updatePattern,
     deletePattern,
-    toggleFavorite,
-    refreshPatterns,
-
-    // Derived data
-    skillLevels,
-    projectTypes,
-    patternsBySkillLevel,
-    patternsByProjectType,
-    recentPatterns,
-    favoritePatterns,
+    toggleFavorite
   };
 };

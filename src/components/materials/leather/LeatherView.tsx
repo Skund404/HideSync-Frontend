@@ -1,6 +1,5 @@
 import EmptyState from '@/components/materials/common/EmptyState';
 import MaterialCard from '@/components/materials/common/MaterialCard';
-import MaterialDetailModal from '@/components/materials/common/MaterialDetailModal';
 import StorageMap from '@/components/materials/common/StorageMap';
 import { useMaterials } from '@/context/MaterialsContext';
 import { Material } from '@/types/materialTypes';
@@ -10,16 +9,23 @@ import {
   getColorHex,
   getStatusColorClass,
 } from '@/utils/materialHelpers';
-import React, { useEffect, useState } from 'react';
-
-// Mock data import - in a real app, this would come from an API
-import { leatherMaterials } from '@/services/mock/leather';
+import React, { useState } from 'react';
 
 interface LeatherViewProps {
+  materials: Material[];
   onAdd: () => void;
+  onEdit: (material: Material) => void;
+  onDelete: (id: number) => Promise<void>;
+  isDeleting: boolean;
 }
 
-const LeatherView: React.FC<LeatherViewProps> = ({ onAdd }) => {
+const LeatherView: React.FC<LeatherViewProps> = ({ 
+  materials, 
+  onAdd, 
+  onEdit,
+  onDelete,
+  isDeleting 
+}) => {
   const {
     viewMode,
     searchQuery,
@@ -37,29 +43,10 @@ const LeatherView: React.FC<LeatherViewProps> = ({ onAdd }) => {
     filterGrade,
   } = useMaterials();
 
-  const [materials, setMaterials] = useState<Material[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [detailViewMaterial, setDetailViewMaterial] = useState<Material | null>(
-    null
-  );
-  const [stockAdjustMaterial, setStockAdjustMaterial] =
-    useState<Material | null>(null);
+  const [detailViewMaterial, setDetailViewMaterial] = useState<Material | null>(null);
+  const [stockAdjustMaterial, setStockAdjustMaterial] = useState<Material | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [storageFilter, setStorageFilter] = useState<string | null>(null);
-
-  // Simulate loading data from API
-  useEffect(() => {
-    const loadData = async () => {
-      // In a real application, this would be an API call
-      // For now, we'll just simulate a delay
-      setTimeout(() => {
-        setMaterials(leatherMaterials);
-        setLoading(false);
-      }, 500);
-    };
-
-    loadData();
-  }, []);
 
   // Filter materials based on current filters
   const initialFiltered = filterMaterials(materials, {
@@ -91,6 +78,18 @@ const LeatherView: React.FC<LeatherViewProps> = ({ onAdd }) => {
   // Adjust stock
   const handleAdjustStock = (material: Material) => {
     setStockAdjustMaterial(material);
+  };
+
+  // Edit material
+  const handleEditMaterial = (material: Material) => {
+    onEdit(material);
+  };
+
+  // Delete material
+  const handleDeleteMaterial = async (material: Material) => {
+    if (window.confirm(`Are you sure you want to delete ${material.name}?`)) {
+      await onDelete(material.id);
+    }
   };
 
   // Close detail modal
@@ -234,10 +233,17 @@ const LeatherView: React.FC<LeatherViewProps> = ({ onAdd }) => {
                         View
                       </button>
                       <button
-                        onClick={() => handleAdjustStock(material)}
-                        className='text-amber-600 hover:text-amber-800'
+                        onClick={() => handleEditMaterial(material)}
+                        className='text-blue-600 hover:text-blue-800'
                       >
-                        Adjust
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteMaterial(material)}
+                        disabled={isDeleting}
+                        className='text-red-600 hover:text-red-800'
+                      >
+                        Delete
                       </button>
                     </td>
                   </tr>
@@ -252,36 +258,6 @@ const LeatherView: React.FC<LeatherViewProps> = ({ onAdd }) => {
 
   // Render view based on viewMode
   const renderView = () => {
-    if (loading) {
-      return (
-        <div className='flex justify-center items-center h-64'>
-          <svg
-            className='animate-spin -ml-1 mr-3 h-8 w-8 text-amber-600'
-            xmlns='http://www.w3.org/2000/svg'
-            fill='none'
-            viewBox='0 0 24 24'
-          >
-            <circle
-              className='opacity-25'
-              cx='12'
-              cy='12'
-              r='10'
-              stroke='currentColor'
-              strokeWidth='4'
-            ></circle>
-            <path
-              className='opacity-75'
-              fill='currentColor'
-              d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
-            ></path>
-          </svg>
-          <span className='text-lg font-medium text-stone-600'>
-            Loading leather materials...
-          </span>
-        </div>
-      );
-    }
-
     if (filteredMaterials.length === 0 && !storageFilter) {
       return <EmptyState onAdd={onAdd} />;
     }
@@ -314,6 +290,9 @@ const LeatherView: React.FC<LeatherViewProps> = ({ onAdd }) => {
                   material={material}
                   onView={handleViewMaterial}
                   onAdjustStock={handleAdjustStock}
+                  onEdit={() => handleEditMaterial(material)}
+                  onDelete={() => handleDeleteMaterial(material)}
+                  isDeleting={isDeleting}
                 />
               ))}
             </div>
@@ -341,6 +320,9 @@ const LeatherView: React.FC<LeatherViewProps> = ({ onAdd }) => {
                 material={material}
                 onView={handleViewMaterial}
                 onAdjustStock={handleAdjustStock}
+                onEdit={() => handleEditMaterial(material)}
+                onDelete={() => handleDeleteMaterial(material)}
+                isDeleting={isDeleting}
               />
             ))}
           </div>
@@ -366,10 +348,43 @@ const LeatherView: React.FC<LeatherViewProps> = ({ onAdd }) => {
 
       {/* Detail Modal */}
       {detailViewMaterial && (
-        <MaterialDetailModal
-          material={detailViewMaterial}
-          onClose={closeDetailModal}
-        />
+        <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4'>
+          <div className='bg-white rounded-lg p-6 w-full max-w-3xl max-h-screen overflow-y-auto'>
+            <div className='flex justify-between items-start mb-4'>
+              <h2 className='text-xl font-bold'>{detailViewMaterial.name}</h2>
+              <button
+                onClick={closeDetailModal}
+                className='text-stone-400 hover:text-stone-600'
+              >
+                <svg
+                  xmlns='http://www.w3.org/2000/svg'
+                  className='h-6 w-6'
+                  fill='none'
+                  viewBox='0 0 24 24'
+                  stroke='currentColor'
+                >
+                  <path
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    strokeWidth={2}
+                    d='M6 18L18 6M6 6l12 12'
+                  />
+                </svg>
+              </button>
+            </div>
+            <div className='text-center p-8 text-stone-600'>
+              Detailed material information would be displayed here
+            </div>
+            <div className='flex justify-end mt-4'>
+              <button
+                onClick={closeDetailModal}
+                className='px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700'
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Stock Adjustment Modal */}

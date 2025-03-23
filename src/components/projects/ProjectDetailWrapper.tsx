@@ -1,19 +1,20 @@
 // src/components/projects/ProjectDetailWrapper.tsx
-import { useProjects } from '@context/ProjectContext';
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Project } from '../../types/models';
+import { useProjects } from '../../context/ProjectContext';
+import ErrorMessage from '../common/ErrorMessage';
+import LoadingSpinner from '../common/LoadingSpinner';
 import ProjectDetail from './ProjectDetail';
 
-// Define an interface that matches the expected Project type in ProjectDetail
-interface ProjectWithStringId extends Omit<Project, 'id'> {
-  id: string;
-}
+import {
+  convertToDetailProject,
+  DetailProject,
+} from '../../utils/projectTypeUtils';
 
 const ProjectDetailWrapper: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
-  const { getProjectById } = useProjects();
-  const [project, setProject] = useState<ProjectWithStringId | null>(null);
+  const { getProjectById, loading: contextLoading } = useProjects();
+  const [project, setProject] = useState<DetailProject | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,49 +25,60 @@ const ProjectDetailWrapper: React.FC = () => {
       return;
     }
 
-    try {
-      // Convert string ID from URL params to number for the service call
-      const numericId = parseInt(projectId, 10);
+    const loadProject = async () => {
+      setLoading(true);
+      try {
+        // Attempt to get the project by ID
+        const loadedProject = getProjectById(projectId);
 
-      if (isNaN(numericId)) {
-        setError('Invalid project ID');
+        if (loadedProject) {
+          // Adapt the project to the format ProjectDetail expects
+          setProject(convertToDetailProject(loadedProject));
+          setError(null);
+        } else {
+          setError(`Project with ID ${projectId} not found`);
+          setProject(null);
+        }
+      } catch (err) {
+        console.error('Error loading project:', err);
+        setError('Failed to load project details');
+        setProject(null);
+      } finally {
         setLoading(false);
-        return;
       }
+    };
 
-      const loadedProject = getProjectById(numericId);
-      if (loadedProject) {
-        // Convert the project to have a string ID as expected by ProjectDetail
-        const projectWithStringId: ProjectWithStringId = {
-          ...loadedProject,
-          id: loadedProject.id.toString(), // Convert number id to string
-        };
-
-        setProject(projectWithStringId);
-      } else {
-        setError(`Project with ID ${projectId} not found`);
-      }
-    } catch (err) {
-      console.error('Error loading project:', err);
-      setError('Failed to load project');
-    } finally {
-      setLoading(false);
-    }
+    loadProject();
   }, [projectId, getProjectById]);
 
-  if (loading) {
-    return <div className='flex justify-center py-10'>Loading project...</div>;
-  }
-
-  if (error || !project) {
+  if (loading || contextLoading) {
     return (
-      <div className='bg-red-50 text-red-700 p-4 rounded-md'>
-        {error || 'Project not found'}
+      <div className='bg-white shadow-sm rounded-lg border border-stone-200 p-6'>
+        <LoadingSpinner
+          message='Loading project details...'
+          size='medium'
+          color='amber'
+        />
       </div>
     );
   }
 
-  return <ProjectDetail project={project} />;
+  if (error || !project) {
+    return (
+      <div className='bg-white shadow-sm rounded-lg border border-stone-200 p-6'>
+        <ErrorMessage
+          message={error || 'Project not found'}
+          variant='critical'
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className='bg-white shadow-sm rounded-lg border border-stone-200 p-6'>
+      <ProjectDetail project={project} />
+    </div>
+  );
 };
 
 export default ProjectDetailWrapper;

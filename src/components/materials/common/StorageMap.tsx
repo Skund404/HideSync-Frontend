@@ -1,19 +1,32 @@
-import { useMaterials } from '@context/MaterialsContext';
-import { useStorage } from '@context/StorageContext';
-import { EnumTypes, MaterialTypes, StorageLocation } from '@types';
-import { formatType } from '@utils/materialHelpers';
+// src/components/materials/common/StorageMap.tsx
+import { Map } from 'lucide-react';
 import React from 'react';
+import { useMaterials } from '../../../context/MaterialsContext';
+import { useStorage } from '../../../context/StorageContext';
+import { Material, MaterialType } from '../../../types/materialTypes';
+import {
+  formatType,
+  getColorHex,
+  getHardwareMaterialColor,
+} from '../../../utils/materialHelpers';
+import {
+  isDyeType,
+  isEdgePaintType,
+  isMaterialOfType,
+  isSupplyCategoryType,
+  isThreadType,
+} from '../../../utils/materialTypeGuards';
 
 interface StorageMapLocation {
   id: string;
   type: string;
-  materials: MaterialTypes.Material[];
+  materials: Material[];
   fullLocation: string;
-  storageLocation?: StorageLocation; // Optional link to actual storage location
+  storageLocation?: any; // Optional link to actual storage location
 }
 
 interface StorageMapProps {
-  materials: MaterialTypes.Material[];
+  materials: Material[];
   onLocationClick?: (location: StorageMapLocation) => void;
   highlightedLocations?: string[]; // Array of location IDs to highlight
   readOnly?: boolean;
@@ -28,54 +41,9 @@ const StorageMap: React.FC<StorageMapProps> = ({
   const { activeTab } = useMaterials();
   const { storageLocations } = useStorage();
 
-  // Helper function to get color hex for display
-  const getColorHex = (colorName: string): string => {
-    // Define a common color map
-    const colorMap: Record<string, string> = {
-      natural: '#D2B48C',
-      tan: '#D2B48C',
-      brown: '#8B4513',
-      dark_brown: '#5C4033',
-      black: '#222222',
-      navy: '#000080',
-      burgundy: '#800020',
-      red: '#B22222',
-      green: '#006400',
-      blue: '#0000CD',
-      yellow: '#FFD700',
-      orange: '#FF8C00',
-      purple: '#800080',
-      white: '#F5F5F5',
-      grey: '#808080',
-      gray: '#808080',
-      silver: '#C0C0C0',
-      olive: '#808000',
-    };
-
-    return colorMap[colorName.toLowerCase()] || '#D2B48C'; // Default to tan if color not found
-  };
-
-  // Get general material color for hardware type
-  const getHardwareMaterialColor = (material: string): string => {
-    const materialColorMap: Record<string, string> = {
-      brass: '#B5A642',
-      nickel: '#C0C0C0',
-      stainless_steel: '#E0E0E0',
-      steel: '#71797E',
-      zinc: '#D3D4D5',
-      copper: '#B87333',
-      aluminum: '#A9A9A9',
-      plastic: '#1E90FF',
-      silver: '#C0C0C0',
-      gold: '#FFD700',
-    };
-
-    return materialColorMap[material.toLowerCase()] || '#C0C0C0'; // Default to silver
-  };
-
   // Group materials by storage location
   const getLocationGroups = () => {
-    const locationGroups: Record<string, MaterialTypes.Material[]> = {};
+    const locationGroups: Record<string, Material[]> = {};
 
     materials.forEach((material) => {
       if (!material.storageLocation) return;
@@ -119,28 +87,25 @@ const StorageMap: React.FC<StorageMapProps> = ({
       return 'border-amber-500 bg-amber-100';
     }
 
-    const materialType = location.materials[0]?.materialType;
-
-    if (!materialType || location.materials.length === 0) {
+    const firstMaterial = location.materials[0];
+    if (!firstMaterial || location.materials.length === 0) {
       return 'border-stone-200 bg-stone-50';
     }
 
-    switch (materialType) {
-      case EnumTypes.MaterialType.LEATHER:
-        return 'border-amber-300 bg-amber-50';
-      case EnumTypes.MaterialType.HARDWARE:
-        return 'border-blue-300 bg-blue-50';
-      case EnumTypes.MaterialType.THREAD:
-      case EnumTypes.MaterialType.WAXED_THREAD:
-      case EnumTypes.MaterialType.DYE:
-      case EnumTypes.MaterialType.EDGE_PAINT:
-      case EnumTypes.MaterialType.BURNISHING_GUM:
-      case EnumTypes.MaterialType.ADHESIVE:
-      case EnumTypes.MaterialType.FINISH:
-        return 'border-green-300 bg-green-50';
-      default:
-        return 'border-stone-200 bg-stone-50';
+    if (isMaterialOfType(firstMaterial, MaterialType.LEATHER)) {
+      return 'border-amber-300 bg-amber-50';
     }
+
+    if (isMaterialOfType(firstMaterial, MaterialType.HARDWARE)) {
+      return 'border-blue-300 bg-blue-50';
+    }
+
+    if (isSupplyCategoryType(firstMaterial)) {
+      return 'border-green-300 bg-green-50';
+    }
+
+    // Default case
+    return 'border-stone-200 bg-stone-50';
   };
 
   // Get text color for location item count
@@ -153,28 +118,25 @@ const StorageMap: React.FC<StorageMapProps> = ({
       return 'text-amber-900';
     }
 
-    const materialType = location.materials[0]?.materialType;
-
-    if (!materialType || location.materials.length === 0) {
+    const firstMaterial = location.materials[0];
+    if (!firstMaterial || location.materials.length === 0) {
       return 'text-stone-400';
     }
 
-    switch (materialType) {
-      case EnumTypes.MaterialType.LEATHER:
-        return 'text-amber-800';
-      case EnumTypes.MaterialType.HARDWARE:
-        return 'text-blue-800';
-      case EnumTypes.MaterialType.THREAD:
-      case EnumTypes.MaterialType.WAXED_THREAD:
-      case EnumTypes.MaterialType.DYE:
-      case EnumTypes.MaterialType.EDGE_PAINT:
-      case EnumTypes.MaterialType.BURNISHING_GUM:
-      case EnumTypes.MaterialType.ADHESIVE:
-      case EnumTypes.MaterialType.FINISH:
-        return 'text-green-800';
-      default:
-        return 'text-stone-800';
+    if (isMaterialOfType(firstMaterial, MaterialType.LEATHER)) {
+      return 'text-amber-800';
     }
+
+    if (isMaterialOfType(firstMaterial, MaterialType.HARDWARE)) {
+      return 'text-blue-800';
+    }
+
+    if (isSupplyCategoryType(firstMaterial)) {
+      return 'text-green-800';
+    }
+
+    // Default case
+    return 'text-stone-800';
   };
 
   // Group locations by type
@@ -192,6 +154,30 @@ const StorageMap: React.FC<StorageMapProps> = ({
   };
 
   const locationsByType = getLocationsByType();
+
+  // Helper to safely get a color value
+  const safeGetColor = (material: Material): string | undefined => {
+    if (
+      'color' in material &&
+      material.color &&
+      typeof material.color === 'string'
+    ) {
+      return material.color;
+    }
+    return undefined;
+  };
+
+  // Helper to safely get hardware material
+  const safeGetHardwareMaterial = (material: Material): string | undefined => {
+    if (
+      'hardwareMaterial' in material &&
+      material.hardwareMaterial &&
+      typeof material.hardwareMaterial === 'string'
+    ) {
+      return material.hardwareMaterial;
+    }
+    return undefined;
+  };
 
   const renderStorageSection = (
     type: string,
@@ -241,42 +227,40 @@ const StorageMap: React.FC<StorageMapProps> = ({
                 <div className='mt-1 flex flex-wrap gap-1'>
                   {location.materials.slice(0, 3).map((mat, idx) => {
                     // For leather and supplies with color
+                    const color = safeGetColor(mat);
                     if (
-                      (mat.materialType === EnumTypes.MaterialType.LEATHER ||
-                        mat.materialType === EnumTypes.MaterialType.THREAD ||
-                        mat.materialType ===
-                          EnumTypes.MaterialType.WAXED_THREAD ||
-                        mat.materialType === EnumTypes.MaterialType.DYE ||
-                        mat.materialType ===
-                          EnumTypes.MaterialType.EDGE_PAINT) &&
-                      (mat as any).color
+                      (isMaterialOfType(mat, MaterialType.LEATHER) ||
+                        isThreadType(mat) ||
+                        isDyeType(mat) ||
+                        isEdgePaintType(mat)) &&
+                      color
                     ) {
                       return (
                         <div
                           key={idx}
                           className='w-3 h-3 rounded-full'
                           style={{
-                            backgroundColor: getColorHex((mat as any).color),
+                            backgroundColor: getColorHex(color),
                           }}
-                          title={(mat as any).color}
+                          title={color}
                         ></div>
                       );
                     }
                     // For hardware
-                    else if (
-                      mat.materialType === EnumTypes.MaterialType.HARDWARE &&
-                      (mat as any).hardwareMaterial
+                    const hwMaterial = safeGetHardwareMaterial(mat);
+                    if (
+                      isMaterialOfType(mat, MaterialType.HARDWARE) &&
+                      hwMaterial
                     ) {
                       return (
                         <div
                           key={idx}
                           className='w-3 h-3 rounded-full'
                           style={{
-                            backgroundColor: getHardwareMaterialColor(
-                              (mat as any).hardwareMaterial
-                            ),
+                            backgroundColor:
+                              getHardwareMaterialColor(hwMaterial),
                           }}
-                          title={(mat as any).hardwareMaterial}
+                          title={hwMaterial}
                         ></div>
                       );
                     }
@@ -285,9 +269,9 @@ const StorageMap: React.FC<StorageMapProps> = ({
                       <div
                         key={idx}
                         className='text-xs bg-stone-100 px-1 rounded'
-                        title={formatType(mat.materialType)}
+                        title={formatType(String(mat.materialType))}
                       >
-                        {formatType(mat.materialType).slice(0, 3)}
+                        {formatType(String(mat.materialType)).slice(0, 3)}
                       </div>
                     );
                   })}
@@ -308,25 +292,25 @@ const StorageMap: React.FC<StorageMapProps> = ({
   // Get the legend based on active tab
   const renderLegend = () => {
     switch (activeTab) {
-      case EnumTypes.MaterialType.LEATHER:
-      case EnumTypes.MaterialType.HARDWARE:
-      case EnumTypes.MaterialType.SUPPLIES:
+      case MaterialType.LEATHER:
+      case MaterialType.HARDWARE:
+      case MaterialType.SUPPLIES:
         return (
           <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
             <div className='flex items-center'>
               <div
                 className={`w-4 h-4 rounded-md ${
-                  activeTab === EnumTypes.MaterialType.LEATHER
+                  activeTab === MaterialType.LEATHER
                     ? 'bg-amber-50 border-amber-300'
-                    : activeTab === EnumTypes.MaterialType.HARDWARE
+                    : activeTab === MaterialType.HARDWARE
                     ? 'bg-blue-50 border-blue-300'
                     : 'bg-green-50 border-green-300'
                 } border mr-2`}
               ></div>
               <span className='text-sm text-stone-600'>
-                {activeTab === EnumTypes.MaterialType.LEATHER
+                {activeTab === MaterialType.LEATHER
                   ? 'Leather Materials'
-                  : activeTab === EnumTypes.MaterialType.HARDWARE
+                  : activeTab === MaterialType.HARDWARE
                   ? 'Hardware Items'
                   : 'Supplies'}
               </span>
@@ -391,19 +375,7 @@ const StorageMap: React.FC<StorageMapProps> = ({
         </div>
 
         <div className='py-8 text-center'>
-          <svg
-            className='w-16 h-16 mx-auto text-stone-300 mb-4'
-            fill='none'
-            viewBox='0 0 24 24'
-            stroke='currentColor'
-          >
-            <path
-              strokeLinecap='round'
-              strokeLinejoin='round'
-              strokeWidth={1.5}
-              d='M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4'
-            />
-          </svg>
+          <Map className='w-16 h-16 mx-auto text-stone-300 mb-4' />
           <p className='text-stone-500 mb-1'>No storage locations found</p>
           <p className='text-sm text-stone-400'>
             Assign materials to storage locations to see them here

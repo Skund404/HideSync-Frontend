@@ -1,81 +1,97 @@
 // src/context/PickingListContext.tsx
-
+import { ApiError } from '@/services/api-client';
+import * as pickingListService from '@/services/picking-list-service';
+import { PickingListStatus } from '@/types/enums';
+import { PickingList, PickingListFilters } from '@/types/pickinglist';
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { v4 as uuidv4 } from 'uuid'; // You need to run: npm i --save-dev @types/uuid
 
-// Import directly from the models/enums file if available
-import { PickingList, PickingListFilters } from '../types/pickinglist';
-// Either import from where it's actually defined, or define it here
-
-// Mock function since getPickingLists is not exported from projects
-const mockGetPickingLists = (): PickingList[] => {
-  return []; // Return empty array as a starting point
-};
-
-// Define PickingListStatus if not exported from pickingList.ts
-enum PickingListStatus {
-  PENDING = 'pending',
-  IN_PROGRESS = 'in_progress',
-  COMPLETED = 'completed',
-  CANCELLED = 'cancelled',
-}
-
+// Define the context interface
 interface PickingListContextType {
   pickingLists: PickingList[];
   loading: boolean;
   error: string | null;
-  getPickingListById: (id: string) => PickingList | undefined;
+  pagination: {
+    total: number;
+    page: number;
+    perPage: number;
+    lastPage: number;
+  };
+
+  // CRUD operations
+  getFilteredPickingLists: (
+    filters?: PickingListFilters,
+    page?: number,
+    perPage?: number
+  ) => Promise<PickingList[]>;
+  getPickingListById: (id: string) => Promise<PickingList | undefined>;
   getPickingListsByProject: (projectId: string) => PickingList[];
   createPickingList: (
-    data: Omit<PickingList, 'id' | 'createdAt' | 'status'>
+    pickingList: Omit<PickingList, 'id' | 'createdAt' | 'completedAt'>
   ) => Promise<PickingList>;
   updatePickingList: (
     id: string,
     updates: Partial<PickingList>
   ) => Promise<PickingList>;
   deletePickingList: (id: string) => Promise<void>;
-  assignPickingList: (
+
+  // Specialized operations
+  updatePickingListStatus: (
     id: string,
-    userId: string,
-    userName: string
+    status: PickingListStatus
   ) => Promise<PickingList>;
+  assignPickingList: (id: string, userId: string) => Promise<PickingList>;
   markPickingListComplete: (id: string) => Promise<PickingList>;
-  getFilteredPickingLists: (filters: PickingListFilters) => PickingList[];
+  updatePickingListItemQuantity: (
+    listId: string,
+    itemId: string,
+    pickedQuantity: number
+  ) => Promise<PickingList>;
+  generatePickingListFromProject: (projectId: string) => Promise<PickingList>;
 }
 
-// Use type assertions instead of extending the interface
-type PickingListWithItemsType = PickingList & {
-  items?: Array<{
-    id: string;
-    materialId: string;
-    quantity: number;
-    pickedQuantity: number;
-    status: 'pending' | 'partial' | 'complete';
-  }>;
-};
-
+// Create the context
 const PickingListContext = createContext<PickingListContextType | undefined>(
   undefined
 );
 
+// Provider component
 export const PickingListProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [pickingLists, setPickingLists] = useState<PickingList[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [pagination, setPagination] = useState<{
+    total: number;
+    page: number;
+    perPage: number;
+    lastPage: number;
+  }>({
+    total: 0,
+    page: 1,
+    perPage: 20,
+    lastPage: 1,
+  });
 
   // Load initial data
   useEffect(() => {
     const fetchPickingLists = async () => {
       setLoading(true);
       try {
-        // Use the mock function instead
-        const lists = mockGetPickingLists();
-        setPickingLists(lists);
+        const response = await pickingListService.getPickingLists();
+        setPickingLists(response.data);
+        // Convert response.meta to match our pagination structure
+        setPagination({
+          total: response.meta.total,
+          page: response.meta.page,
+          perPage: response.meta.per_page,
+          lastPage: response.meta.last_page,
+        });
+        setError(null);
       } catch (err) {
-        setError('Failed to load picking lists');
-        console.error(err);
+        const apiError = err as ApiError;
+        setError(apiError.message || 'Failed to load picking lists');
+        console.error('Error loading picking lists:', err);
       } finally {
         setLoading(false);
       }
@@ -84,159 +100,58 @@ export const PickingListProvider: React.FC<{ children: React.ReactNode }> = ({
     fetchPickingLists();
   }, []);
 
-  // Create a new picking list
-  const createPickingList = async (
-    data: Omit<PickingList, 'id' | 'createdAt' | 'status'>
-  ): Promise<PickingList> => {
+  // Get filtered picking lists with pagination
+  const getFilteredPickingLists = async (
+    filters?: PickingListFilters,
+    page: number = 1,
+    perPage: number = 20
+  ): Promise<PickingList[]> => {
+    setLoading(true);
     try {
-      setLoading(true);
-
-      // Create new picking list using type assertion
-      const newPickingList = {
-        ...data,
-        id: uuidv4(),
-        status: PickingListStatus.PENDING,
-        createdAt: new Date(),
-      } as PickingList;
-
-      // Add to state
-      setPickingLists((prev) => [...prev, newPickingList]);
-
-      setLoading(false);
-      return newPickingList;
-    } catch (err) {
-      setError('Failed to create picking list');
-      setLoading(false);
-      throw err;
-    }
-  };
-
-  // Assign a picking list to a user
-  const assignPickingList = async (
-    id: string,
-    userId: string,
-    userName: string
-  ): Promise<PickingList> => {
-    try {
-      setLoading(true);
-
-      // Find the picking list
-      const pickingList = pickingLists.find((list) => list.id === id);
-      if (!pickingList) {
-        throw new Error('Picking list not found');
-      }
-
-      // Update the picking list with assignment using type assertion
-      const updatedList = {
-        ...pickingList,
-        assignedTo: userId,
-      } as PickingList;
-
-      // Update in state
-      setPickingLists((prev) =>
-        prev.map((list) => (list.id === id ? updatedList : list))
+      const response = await pickingListService.getPickingLists(
+        filters,
+        page,
+        perPage
       );
 
-      setLoading(false);
-      return updatedList;
-    } catch (err) {
-      setError('Failed to assign picking list');
-      setLoading(false);
-      throw err;
-    }
-  };
-
-  // Update a picking list
-  const updatePickingList = async (
-    id: string,
-    updates: Partial<PickingList>
-  ): Promise<PickingList> => {
-    try {
-      setLoading(true);
-
-      // Find the picking list
-      const pickingList = pickingLists.find((list) => list.id === id);
-      if (!pickingList) {
-        throw new Error('Picking list not found');
+      // Update local state if no filters were applied
+      if (!filters && page === 1) {
+        setPickingLists(response.data);
+        // Convert response.meta to match our pagination structure
+        setPagination({
+          total: response.meta.total,
+          page: response.meta.page,
+          perPage: response.meta.per_page,
+          lastPage: response.meta.last_page,
+        });
       }
 
-      // Type assertion to handle items or other properties
-      const pickingListWithItems = pickingList as PickingListWithItemsType;
-      const updatesWithItems = updates as Partial<PickingListWithItemsType>;
-
-      // Keep items if they exist in the original and not being updated
-      const items =
-        updatesWithItems.items !== undefined
-          ? updatesWithItems.items
-          : pickingListWithItems.items;
-
-      // Update the picking list
-      const updatedList = {
-        ...pickingList,
-        ...updates,
-        // Only include items if they exist
-        ...(items && { items }),
-      } as PickingList;
-
-      // Update in state
-      setPickingLists((prev) =>
-        prev.map((list) => (list.id === id ? updatedList : list))
-      );
-
-      setLoading(false);
-      return updatedList;
+      return response.data;
     } catch (err) {
-      setError('Failed to update picking list');
-      setLoading(false);
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to fetch picking lists');
       throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Mark a picking list as complete
-  const markPickingListComplete = async (id: string): Promise<PickingList> => {
+  // Get a picking list by ID
+  const getPickingListById = async (
+    id: string
+  ): Promise<PickingList | undefined> => {
+    setLoading(true);
     try {
-      setLoading(true);
-
-      // Find the picking list
-      const pickingList = pickingLists.find((list) => list.id === id);
-      if (!pickingList) {
-        throw new Error('Picking list not found');
-      }
-
-      // Update the picking list
-      const updatedList = {
-        ...pickingList,
-        status: PickingListStatus.COMPLETED,
-        completedAt: new Date(),
-      } as PickingList;
-
-      // Update in state
-      setPickingLists((prev) =>
-        prev.map((list) => (list.id === id ? updatedList : list))
+      const pickingList = await pickingListService.getPickingListById(id);
+      return pickingList;
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(
+        apiError.message || `Failed to fetch picking list with ID: ${id}`
       );
-
+      return undefined;
+    } finally {
       setLoading(false);
-      return updatedList;
-    } catch (err) {
-      setError('Failed to mark picking list as complete');
-      setLoading(false);
-      throw err;
-    }
-  };
-
-  // Delete a picking list
-  const deletePickingList = async (id: string): Promise<void> => {
-    try {
-      setLoading(true);
-
-      // Remove from state
-      setPickingLists((prev) => prev.filter((list) => list.id !== id));
-
-      setLoading(false);
-    } catch (err) {
-      setError('Failed to delete picking list');
-      setLoading(false);
-      throw err;
     }
   };
 
@@ -245,63 +160,184 @@ export const PickingListProvider: React.FC<{ children: React.ReactNode }> = ({
     return pickingLists.filter((list) => list.projectId === projectId);
   };
 
-  // Get a picking list by ID
-  const getPickingListById = (id: string): PickingList | undefined => {
-    return pickingLists.find((list) => list.id === id);
+  // Create a new picking list
+  const createPickingList = async (
+    pickingListData: Omit<PickingList, 'id' | 'createdAt' | 'completedAt'>
+  ): Promise<PickingList> => {
+    setLoading(true);
+    try {
+      const newPickingList = await pickingListService.createPickingList(
+        pickingListData
+      );
+
+      // Update local state
+      setPickingLists((prev) => [...prev, newPickingList]);
+
+      return newPickingList;
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to create picking list');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Get filtered picking lists
-  const getFilteredPickingLists = (
-    filters: PickingListFilters
-  ): PickingList[] => {
-    let filtered = [...pickingLists];
-
-    // Filter by status
-    if (filters.status !== undefined) {
-      filtered = filtered.filter((list) => list.status === filters.status);
-    }
-
-    // Filter by project
-    if (filters.projectId !== undefined) {
-      filtered = filtered.filter(
-        (list) => list.projectId === filters.projectId
+  // Update a picking list
+  const updatePickingList = async (
+    id: string,
+    updates: Partial<PickingList>
+  ): Promise<PickingList> => {
+    setLoading(true);
+    try {
+      const updatedPickingList = await pickingListService.updatePickingList(
+        id,
+        updates
       );
-    }
 
-    // Filter by assigned user
-    if (filters.assignedTo !== undefined) {
-      filtered = filtered.filter((list) => {
-        if (filters.assignedTo === 'unassigned') {
-          return !list.assignedTo;
-        } else {
-          return list.assignedTo === filters.assignedTo;
-        }
-      });
-    }
-
-    // Filter by creation date range
-    if (filters.dateRange?.start) {
-      filtered = filtered.filter(
-        (list) =>
-          new Date(list.createdAt) >= new Date(filters.dateRange?.start || '')
+      // Update local state
+      setPickingLists((prev) =>
+        prev.map((list) => (list.id === id ? updatedPickingList : list))
       );
-    }
 
-    // Filter by creation date range (end)
-    if (filters.dateRange?.end) {
-      filtered = filtered.filter(
-        (list) =>
-          new Date(list.createdAt) <= new Date(filters.dateRange?.end || '')
+      return updatedPickingList;
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to update picking list');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Delete a picking list
+  const deletePickingList = async (id: string): Promise<void> => {
+    setLoading(true);
+    try {
+      await pickingListService.deletePickingList(id);
+
+      // Update local state
+      setPickingLists((prev) => prev.filter((list) => list.id !== id));
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to delete picking list');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Update picking list status
+  const updatePickingListStatus = async (
+    id: string,
+    status: PickingListStatus
+  ): Promise<PickingList> => {
+    setLoading(true);
+    try {
+      const updatedPickingList =
+        await pickingListService.updatePickingListStatus(id, status);
+
+      // Update local state
+      setPickingLists((prev) =>
+        prev.map((list) => (list.id === id ? updatedPickingList : list))
       );
+
+      return updatedPickingList;
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to update picking list status');
+      throw err;
+    } finally {
+      setLoading(false);
     }
+  };
 
-    // Sort by date (newest first by default)
-    filtered = filtered.sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+  // Assign a picking list to a user
+  const assignPickingList = async (
+    id: string,
+    userId: string
+  ): Promise<PickingList> => {
+    setLoading(true);
+    try {
+      const updatedPickingList = await pickingListService.assignPickingList(
+        id,
+        userId
+      );
 
-    return filtered;
+      // Update local state
+      setPickingLists((prev) =>
+        prev.map((list) => (list.id === id ? updatedPickingList : list))
+      );
+
+      return updatedPickingList;
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to assign picking list');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Mark a picking list as complete
+  const markPickingListComplete = async (id: string): Promise<PickingList> => {
+    return updatePickingListStatus(id, PickingListStatus.COMPLETED);
+  };
+
+  // Update picking list item quantity
+  const updatePickingListItemQuantity = async (
+    listId: string,
+    itemId: string,
+    pickedQuantity: number
+  ): Promise<PickingList> => {
+    setLoading(true);
+    try {
+      const updatedPickingList =
+        await pickingListService.updatePickingListItemQuantity(
+          listId,
+          itemId,
+          pickedQuantity
+        );
+
+      // Update local state
+      setPickingLists((prev) =>
+        prev.map((list) => (list.id === listId ? updatedPickingList : list))
+      );
+
+      return updatedPickingList;
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(
+        apiError.message || 'Failed to update picking list item quantity'
+      );
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Generate a picking list from a project
+  const generatePickingListFromProject = async (
+    projectId: string
+  ): Promise<PickingList> => {
+    setLoading(true);
+    try {
+      const newPickingList =
+        await pickingListService.generatePickingListFromProject(projectId);
+
+      // Update local state
+      setPickingLists((prev) => [...prev, newPickingList]);
+
+      return newPickingList;
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(
+        apiError.message || 'Failed to generate picking list from project'
+      );
+      throw err;
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Context value
@@ -309,14 +345,18 @@ export const PickingListProvider: React.FC<{ children: React.ReactNode }> = ({
     pickingLists,
     loading,
     error,
+    pagination,
+    getFilteredPickingLists,
     getPickingListById,
     getPickingListsByProject,
     createPickingList,
     updatePickingList,
     deletePickingList,
+    updatePickingListStatus,
     assignPickingList,
     markPickingListComplete,
-    getFilteredPickingLists,
+    updatePickingListItemQuantity,
+    generatePickingListFromProject,
   };
 
   return (

@@ -1,3 +1,4 @@
+// src/components/documentation/videos/VideoEmbed.tsx
 import { ExternalLink, Maximize2, Play } from 'lucide-react';
 import React, { useState } from 'react';
 import { VideoResource } from '../../../types/documentationTypes';

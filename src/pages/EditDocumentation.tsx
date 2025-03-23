@@ -1,66 +1,128 @@
+// src/pages/EditDocumentation.tsx
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import DocumentationEditor from '../components/documentation/editor/DocumentationEditor';
-import { useDocumentation } from '../context/DocumentationContext';
-import { DocumentationResource } from '../types/documentationTypes';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { DocumentationProvider } from '@/context/DocumentationContext';
+import { useDocumentation } from '@/context/DocumentationContext';
+import DocumentationEditor from '@/components/documentation/editor/DocumentationEditor';
+import LoadingSpinner from '@/components/common/LoadingSpinner';
+import ErrorMessage from '@/components/common/ErrorMessage';
+import { ChevronLeft } from 'lucide-react';
+import { DocumentationResource } from '@/types/documentationTypes';
 
-const EditDocumentation: React.FC = () => {
-  const { resourceId } = useParams<{ resourceId: string }>();
+// Wrapper component to use the context
+const EditDocumentationContent: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { resources, addResource, updateResource } = useDocumentation();
-  const [initialResource, setInitialResource] = useState<
-    Partial<DocumentationResource>
-  >({});
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Load resource data if editing existing resource
+  const { 
+    currentResource, 
+    loading, 
+    error, 
+    fetchResourceById,
+    createResource,
+    updateResource
+  } = useDocumentation();
+  
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  
+  const isNew = id === 'new';
+  
   useEffect(() => {
-    if (resourceId === 'new') {
-      setIsLoading(false);
-      return;
+    if (!isNew && id) {
+      fetchResourceById(id);
     }
-
-    const resource = resources.find((r) => r.id === resourceId);
-    if (resource) {
-      setInitialResource(resource);
-    }
-    setIsLoading(false);
-  }, [resourceId, resources]);
-
-  const handleSave = async (resource: DocumentationResource) => {
+  }, [isNew, id, fetchResourceById]);
+  
+  const handleSave = async (resource: Omit<DocumentationResource, 'id'> | DocumentationResource) => {
+    setIsSaving(true);
+    setSaveError(null);
+    
     try {
-      if (resourceId === 'new') {
-        await addResource(resource);
-      } else {
-        await updateResource(resource);
+      if (isNew) {
+        // For new resources
+        const newResource = await createResource(resource as Omit<DocumentationResource, 'id'>);
+        navigate(`/documentation/article/${newResource.id}`);
+      } else if (id) {
+        // For existing resources
+        await updateResource(id, resource as Partial<DocumentationResource>);
+        navigate(`/documentation/article/${id}`);
       }
-      navigate('/documentation');
-    } catch (error) {
-      console.error('Error saving documentation:', error);
-      // Show error message to user
+    } catch (err: any) {
+      console.error('Failed to save document:', err);
+      setSaveError(err.message || 'Failed to save document. Please try again.');
+    } finally {
+      setIsSaving(false);
     }
   };
-
+  
   const handleCancel = () => {
-    navigate('/documentation');
+    if (isNew) {
+      navigate('/documentation');
+    } else if (id) {
+      navigate(`/documentation/article/${id}`);
+    } else {
+      navigate('/documentation');
+    }
   };
-
-  if (isLoading) {
-    return (
-      <div className='flex justify-center items-center h-64'>
-        <div className='animate-spin rounded-full h-10 w-10 border-b-2 border-amber-600'></div>
-      </div>
-    );
-  }
-
+  
   return (
-    <div className='max-w-4xl mx-auto p-6'>
-      <DocumentationEditor
-        initialResource={initialResource}
-        onSave={handleSave}
-        onCancel={handleCancel}
-      />
+    <div className="max-w-5xl mx-auto p-4 md:p-6">
+      <div className="mb-6">
+        <Link 
+          to={isNew ? '/documentation' : `/documentation/article/${id}`}
+          className="inline-flex items-center text-amber-600 hover:text-amber-800"
+        >
+          <ChevronLeft size={16} className="mr-1" />
+          {isNew ? 'Back to Documentation' : 'Back to Article'}
+        </Link>
+      </div>
+      
+      <h1 className="text-2xl font-bold mb-6">
+        {isNew ? 'Create New Document' : `Edit: ${currentResource?.title || 'Loading...'}`}
+      </h1>
+      
+      {saveError && (
+        <div className="mb-6">
+          <ErrorMessage message={saveError} onRetry={() => setSaveError(null)} />
+        </div>
+      )}
+      
+      {!isNew && loading && !currentResource ? (
+        <div className="py-12">
+          <LoadingSpinner message="Loading document..." />
+        </div>
+      ) : !isNew && error ? (
+        <ErrorMessage 
+          message={`Failed to load document: ${error}`} 
+          onRetry={() => id && fetchResourceById(id)} 
+        />
+      ) : (
+        <DocumentationEditor 
+          resource={isNew ? null : currentResource} 
+          onSave={handleSave}
+          onCancel={handleCancel}
+        />
+      )}
+      
+      {isSaving && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <LoadingSpinner size="medium" message="Saving document..." />
+          </div>
+        </div>
+      )}
     </div>
+  );
+};
+
+// Main component that provides the context
+const EditDocumentation: React.FC = () => {
+  return (
+    <DocumentationProvider>
+      <div className="min-h-screen bg-stone-50">
+        <EditDocumentationContent />
+      </div>
+    </DocumentationProvider>
   );
 };
 

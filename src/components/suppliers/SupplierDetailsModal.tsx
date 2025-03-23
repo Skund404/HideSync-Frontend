@@ -1,25 +1,77 @@
 // src/components/suppliers/SupplierDetailsModal.tsx
+import ErrorMessage from '@/components/common/ErrorMessage';
+import LoadingSpinner from '@/components/common/LoadingSpinner';
 import { usePurchaseOrders } from '@/context/PurchaseContext';
-import { SupplierStatus } from '@/types/enums'; // Add this import
-import { Supplier } from '@/types/supplierTypes';
-import React from 'react';
+import { useSuppliers } from '@/context/SupplierContext';
+import { SupplierStatus } from '@/types/enums';
+import { Purchase, Supplier } from '@/types/supplierTypes';
+import React, { useState } from 'react';
 
 interface SupplierDetailsModalProps {
   supplier: Supplier;
   onClose: () => void;
   onCreatePurchase: () => void;
+  onEditSupplier: (supplier: Supplier) => void;
 }
 
 const SupplierDetailsModal: React.FC<SupplierDetailsModalProps> = ({
   supplier,
   onClose,
   onCreatePurchase,
+  onEditSupplier,
 }) => {
-  const { getSupplierPurchaseOrders } = usePurchaseOrders();
-  const supplierPurchaseOrders = getSupplierPurchaseOrders(supplier.id);
+  const { getSupplierPurchaseOrders, loading, error } = usePurchaseOrders();
+  const { updateSupplier } = useSuppliers();
+  const [supplierPurchaseOrders, setSupplierPurchaseOrders] = useState<
+    Purchase[]
+  >([]);
+  const [updating, setUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+
+  // Get purchase orders for this supplier
+  React.useEffect(() => {
+    const fetchPurchaseOrders = async () => {
+      try {
+        const orders = await getSupplierPurchaseOrders(supplier.id);
+        setSupplierPurchaseOrders(orders);
+      } catch (err: any) {
+        console.error('Error fetching purchase orders:', err);
+      }
+    };
+
+    fetchPurchaseOrders();
+  }, [supplier.id, getSupplierPurchaseOrders]);
+
+  // Handle supplier activation/deactivation
+  const handleToggleStatus = async () => {
+    try {
+      setUpdating(true);
+      setUpdateError(null);
+
+      const newStatus =
+        supplier.status === SupplierStatus.ACTIVE
+          ? SupplierStatus.INACTIVE
+          : SupplierStatus.ACTIVE;
+
+      await updateSupplier({
+        ...supplier,
+        status: newStatus,
+      });
+
+      // The supplier object in the parent component will be updated via the context
+    } catch (err: any) {
+      setUpdateError(err.message || 'Failed to update supplier status');
+      console.error('Error updating supplier status:', err);
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   // Helper function to get color for status
   const getStatusColor = (status: string) => {
+    // Convert to uppercase for comparison with our constants
+    const upperStatus = status.toUpperCase();
+
     if (
       [
         'ACTIVE',
@@ -28,7 +80,7 @@ const SupplierDetailsModal: React.FC<SupplierDetailsModalProps> = ({
         'PRIMARY',
         'APPROVED',
         'QUALIFIED',
-      ].includes(status)
+      ].includes(upperStatus)
     ) {
       return 'bg-green-100 text-green-800';
     }
@@ -44,16 +96,18 @@ const SupplierDetailsModal: React.FC<SupplierDetailsModalProps> = ({
         'PENDING_APPROVAL',
         'PENDING_REVIEW',
         'UNDER_EVALUATION',
-      ].includes(status)
+      ].includes(upperStatus)
     ) {
       return 'bg-amber-100 text-amber-800';
     }
 
-    if (['INACTIVE', 'SUSPENDED', 'ON_HOLD'].includes(status)) {
+    if (['INACTIVE', 'SUSPENDED', 'ON_HOLD'].includes(upperStatus)) {
       return 'bg-stone-100 text-stone-800';
     }
 
-    if (['BLACKLISTED', 'BANNED', 'DISPUTED', 'TERMINATED'].includes(status)) {
+    if (
+      ['BLACKLISTED', 'BANNED', 'DISPUTED', 'TERMINATED'].includes(upperStatus)
+    ) {
       return 'bg-red-100 text-red-800';
     }
 
@@ -65,7 +119,7 @@ const SupplierDetailsModal: React.FC<SupplierDetailsModalProps> = ({
         'ACKNOWLEDGED',
         'RECEIVED',
         'PAID',
-      ].includes(status)
+      ].includes(upperStatus)
     ) {
       return 'bg-green-100 text-green-800';
     }
@@ -77,7 +131,7 @@ const SupplierDetailsModal: React.FC<SupplierDetailsModalProps> = ({
         'SUBMITTED_TO_SUPPLIER',
         'PLANNING',
         'PENDING_APPROVAL',
-      ].includes(status)
+      ].includes(upperStatus)
     ) {
       return 'bg-blue-100 text-blue-800';
     }
@@ -92,7 +146,7 @@ const SupplierDetailsModal: React.FC<SupplierDetailsModalProps> = ({
         'PAYMENT_PENDING',
         'BALANCE_PENDING',
         'DEPOSIT_PENDING',
-      ].includes(status)
+      ].includes(upperStatus)
     ) {
       return 'bg-amber-100 text-amber-800';
     }
@@ -175,6 +229,12 @@ const SupplierDetailsModal: React.FC<SupplierDetailsModalProps> = ({
         </div>
 
         <div className='p-6 flex-1 overflow-y-auto'>
+          {updateError && (
+            <div className='mb-4'>
+              <ErrorMessage message={updateError} />
+            </div>
+          )}
+
           <div className='grid grid-cols-1 md:grid-cols-3 gap-6 mb-6'>
             <div className='bg-stone-50 rounded-lg p-4'>
               <h3 className='font-medium text-stone-700 mb-3'>
@@ -324,7 +384,15 @@ const SupplierDetailsModal: React.FC<SupplierDetailsModalProps> = ({
             <h3 className='font-medium text-stone-700 mb-3'>
               Purchase History
             </h3>
-            {supplierPurchaseOrders.length > 0 ? (
+            {loading ? (
+              <LoadingSpinner
+                size='small'
+                color='amber'
+                message='Loading purchase history...'
+              />
+            ) : error ? (
+              <ErrorMessage message={error} />
+            ) : supplierPurchaseOrders.length > 0 ? (
               <div className='bg-white rounded-lg border border-stone-200 overflow-hidden'>
                 <table className='min-w-full divide-y divide-stone-200'>
                   <thead className='bg-stone-50'>
@@ -408,15 +476,48 @@ const SupplierDetailsModal: React.FC<SupplierDetailsModalProps> = ({
 
         <div className='border-t border-stone-200 p-6 flex justify-between'>
           <div className='flex space-x-3'>
-            <button className='bg-stone-100 hover:bg-stone-200 text-stone-700 px-4 py-2 rounded-md text-sm font-medium'>
+            <button
+              onClick={() => onEditSupplier(supplier)}
+              className='bg-stone-100 hover:bg-stone-200 text-stone-700 px-4 py-2 rounded-md text-sm font-medium'
+            >
               Edit Supplier
             </button>
-            {supplier.status === SupplierStatus.ACTIVE ? (
-              <button className='bg-red-50 hover:bg-red-100 text-red-700 px-4 py-2 rounded-md text-sm font-medium'>
+            {updating ? (
+              <button className='bg-stone-100 text-stone-400 px-4 py-2 rounded-md text-sm font-medium cursor-not-allowed flex items-center'>
+                <svg
+                  className='animate-spin -ml-1 mr-2 h-4 w-4 text-stone-500'
+                  xmlns='http://www.w3.org/2000/svg'
+                  fill='none'
+                  viewBox='0 0 24 24'
+                >
+                  <circle
+                    className='opacity-25'
+                    cx='12'
+                    cy='12'
+                    r='10'
+                    stroke='currentColor'
+                    strokeWidth='4'
+                  ></circle>
+                  <path
+                    className='opacity-75'
+                    fill='currentColor'
+                    d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
+                  ></path>
+                </svg>
+                Updating...
+              </button>
+            ) : supplier.status === SupplierStatus.ACTIVE ? (
+              <button
+                onClick={handleToggleStatus}
+                className='bg-red-50 hover:bg-red-100 text-red-700 px-4 py-2 rounded-md text-sm font-medium'
+              >
                 Deactivate
               </button>
             ) : (
-              <button className='bg-green-50 hover:bg-green-100 text-green-700 px-4 py-2 rounded-md text-sm font-medium'>
+              <button
+                onClick={handleToggleStatus}
+                className='bg-green-50 hover:bg-green-100 text-green-700 px-4 py-2 rounded-md text-sm font-medium'
+              >
                 Activate
               </button>
             )}

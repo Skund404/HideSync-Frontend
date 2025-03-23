@@ -1,53 +1,100 @@
 // src/pages/ArticlePage.tsx
-
 import React, { useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import ArticleView from '../components/documentation/ArticleView';
-import Layout from '../components/layout/Layout';
-import {
-  DocumentationProvider,
-  useDocumentation,
-} from '../context/DocumentationContext';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { DocumentationProvider } from '@/context/DocumentationContext';
+import EnhancedArticleView from '@/components/documentation/EnhancedArticleView';
+import { ContextHelpProvider } from '@/components/documentation/contextual/ContextHelpProvider';
+import ContextHelpModal from '@/components/documentation/contextual/ContextHelpModal';
+import LoadingSpinner from '@/components/common/LoadingSpinner';
+import ErrorMessage from '@/components/common/ErrorMessage';
+import { ChevronLeft, Edit } from 'lucide-react';
+import { useDocumentation } from '@/context/DocumentationContext';
 
-interface ArticlePageParams {
-  resourceId: string;
-}
-
+// Inner component that uses the context
 const ArticlePageContent: React.FC = () => {
-  const { resourceId } = useParams<
-    keyof ArticlePageParams
-  >() as ArticlePageParams;
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { loadResource } = useDocumentation();
-
+  const { 
+    currentResource, 
+    loading, 
+    error, 
+    fetchResourceById 
+  } = useDocumentation();
+  
+  // Fetch the resource when component mounts or ID changes
   useEffect(() => {
-    const fetchResource = async () => {
-      const resource = await loadResource(resourceId);
-      if (!resource) {
-        // Resource not found, redirect to main documentation page
-        navigate('/documentation');
-      }
-    };
-
-    fetchResource();
-  }, [resourceId, loadResource, navigate]);
-
+    if (id) {
+      fetchResourceById(id);
+    }
+  }, [id, fetchResourceById]);
+  
+  // Handle navigation back
   const handleBack = () => {
-    navigate('/documentation');
+    navigate(-1); // Go back to previous page
   };
-
-  return <ArticleView resourceId={resourceId} onBack={handleBack} />;
+  
+  if (!id) {
+    return (
+      <div className="max-w-4xl mx-auto p-6">
+        <ErrorMessage 
+          message="Article ID is required" 
+          onRetry={() => navigate('/documentation')} 
+        />
+      </div>
+    );
+  }
+  
+  return (
+    <div className="max-w-4xl mx-auto p-6">
+      {/* Navigation and actions */}
+      <div className="flex justify-between items-center mb-6">
+        <button
+          onClick={handleBack}
+          className="flex items-center text-amber-600 hover:text-amber-800"
+        >
+          <ChevronLeft size={18} className="mr-1" />
+          Back to Documentation
+        </button>
+        
+        {currentResource && (
+          <Link
+            to={`/documentation/edit/${id}`}
+            className="flex items-center text-stone-600 hover:text-stone-800"
+          >
+            <Edit size={18} className="mr-1" />
+            Edit Article
+          </Link>
+        )}
+      </div>
+      
+      {/* Content area */}
+      {loading && !currentResource ? (
+        <div className="py-12 flex justify-center">
+          <LoadingSpinner size="large" message="Loading article..." />
+        </div>
+      ) : error ? (
+        <ErrorMessage 
+          message={`Failed to load article: ${error}`} 
+          onRetry={() => id && fetchResourceById(id)} 
+        />
+      ) : (
+        <EnhancedArticleView />
+      )}
+    </div>
+  );
 };
 
+// Main component that provides the contexts
 const ArticlePage: React.FC = () => {
   return (
-    <Layout>
-      <DocumentationProvider>
-        <div className='p-6'>
+    <DocumentationProvider>
+      <ContextHelpProvider>
+        <div className="min-h-screen bg-white">
           <ArticlePageContent />
+          <ContextHelpModal />
         </div>
-      </DocumentationProvider>
-    </Layout>
+      </ContextHelpProvider>
+    </DocumentationProvider>
   );
 };
 

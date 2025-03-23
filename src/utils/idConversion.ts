@@ -1,43 +1,51 @@
 // src/utils/idConversion.ts
 
 /**
- * Converts a string ID (e.g. from URL params) to a number ID for API calls.
- * Returns undefined if the conversion fails.
+ * Converts a string ID to a number.
+ * @param id The string ID to convert
+ * @returns The numeric ID or 0 if conversion failed
  */
-export const stringIdToNumber = (
-  id: string | undefined
-): number | undefined => {
-  if (!id) return undefined;
+export function stringIdToNumber(id: string | undefined): number {
+  if (!id) return 0;
 
-  const numericId = parseInt(id, 10);
-  return isNaN(numericId) ? undefined : numericId;
-};
+  const numId = parseInt(id, 10);
+  return isNaN(numId) ? 0 : numId;
+}
 
 /**
- * Converts a number ID to a string ID (e.g. for URL params or display).
- * Returns undefined if the input is undefined.
+ * Converts a number ID to a string.
+ * @param id The number ID to convert
+ * @returns The string ID or undefined if conversion failed
  */
-export const numberIdToString = (
-  id: number | undefined
-): string | undefined => {
-  if (id === undefined) return undefined;
+export function numberIdToString(id: number | undefined): string | undefined {
+  if (id === undefined || id === null) return undefined;
   return id.toString();
-};
+}
 
 /**
- * Safely converts a string ID to a number ID, or returns a fallback value if conversion fails.
+ * Safely converts a number ID to a non-undefined string.
+ * @param id The number ID to convert
+ * @param defaultValue Optional default value if ID is invalid
+ * @returns The string ID or defaultValue (empty string if not specified)
  */
-export const safeStringIdToNumber = (
+export function safeNumberIdToString(
+  id: number | undefined,
+  defaultValue: string = ''
+): string {
+  const stringId = numberIdToString(id);
+  return stringId === undefined ? defaultValue : stringId;
+}
+
+/**
+ * Safely converts a string ID to a non-zero number.
+ * @param id The string ID to convert
+ * @param defaultValue Optional default value if ID is invalid
+ * @returns The numeric ID or defaultValue (0 if not specified)
+ */
+export function safeStringIdToNumber(
   id: string | undefined,
-  fallback: number
-): number => {
-  const numericId = stringIdToNumber(id);
-  return numericId !== undefined ? numericId : fallback;
-};
-
-/**
- * Checks if a string ID is valid (can be converted to a number).
- */
-export const isValidStringId = (id: string | undefined): boolean => {
-  return stringIdToNumber(id) !== undefined;
-};
+  defaultValue: number = 0
+): number {
+  const numId = stringIdToNumber(id);
+  return numId === 0 ? defaultValue : numId;
+}

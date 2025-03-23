@@ -14,12 +14,7 @@ const SaveAsTemplate: React.FC = () => {
   const [isPublic, setIsPublic] = useState(false);
   const [tags, setTags] = useState('');
 
-  // Convert string ID to number for API call
-  const numericProjectId = projectId ? parseInt(projectId, 10) : undefined;
-  const project =
-    numericProjectId && !isNaN(numericProjectId)
-      ? getProjectById(numericProjectId)
-      : null;
+  const project = projectId ? getProjectById(projectId) : null;
 
   // Pre-fill template name based on project
   useEffect(() => {
@@ -46,18 +41,8 @@ const SaveAsTemplate: React.FC = () => {
         tags: tagArray,
       };
 
-      // Make sure projectId is properly converted to the expected type
-      // This depends on how saveProjectAsTemplate is implemented
-      // If it expects a number:
-      if (numericProjectId && !isNaN(numericProjectId)) {
-        await saveProjectAsTemplate(
-          numericProjectId.toString(),
-          templateName,
-          options
-        );
-      } else {
-        throw new Error('Invalid project ID');
-      }
+      // Call saveProjectAsTemplate with the correct arguments
+      await saveProjectAsTemplate(projectId, templateName, options);
 
       // Navigate to templates page
       navigate('/templates');

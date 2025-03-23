@@ -1,16 +1,28 @@
-// src/components/dashboard/PurchaseOrderStatsCard.tsx
+// src/components/dashboard/PurchaseStatsCard.tsx
 import StatCard from '@/components/dashboard/StatCard';
 import usePurchaseMetrics from '@/hooks/usePurchaseMetrics';
 import React from 'react';
 
-const PurchaseOrderStatsCard: React.FC = () => {
-  const metrics = usePurchaseMetrics();
+const PurchaseStatsCard: React.FC = () => {
+  const { totalOrders, inProgress, spendingTrend } = usePurchaseMetrics();
 
-  // Updated to use correct property names from our metrics hook
+  // Calculate percentage of orders in progress
+  const progressPercentage =
+    totalOrders > 0 ? Math.min(100, (inProgress / totalOrders) * 100) : 0;
+
+  // Add trending info to the detail string instead of using a separate trend prop
+  const detailText = `${inProgress} in progress${
+    spendingTrend !== 0
+      ? ` • ${spendingTrend > 0 ? '↑' : '↓'} ${Math.abs(spendingTrend).toFixed(
+          1
+        )}%`
+      : ''
+  }`;
+
   return (
     <StatCard
       title='Purchase Orders'
-      value={metrics.totalOrders}
+      value={totalOrders}
       icon={
         <svg
           xmlns='http://www.w3.org/2000/svg'
@@ -28,22 +40,10 @@ const PurchaseOrderStatsCard: React.FC = () => {
         </svg>
       }
       color='amber'
-      detail={`${metrics.inProgress} in progress`}
-      percentage={
-        metrics.totalOrders > 0
-          ? (metrics.inProgress / metrics.totalOrders) * 100
-          : 0
-      }
-      trend={
-        metrics.spendingTrend !== 0
-          ? {
-              value: `${Math.abs(metrics.spendingTrend).toFixed(1)}%`,
-              isPositive: metrics.spendingTrend > 0,
-            }
-          : undefined
-      }
+      detail={detailText}
+      percentage={progressPercentage}
     />
   );
 };
 
-export default PurchaseOrderStatsCard;
+export default PurchaseStatsCard;

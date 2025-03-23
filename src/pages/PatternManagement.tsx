@@ -1,9 +1,11 @@
 // src/pages/PatternManagement.tsx
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PatternFilter from '../components/patterns/common/PatternFilter';
 import PatternGrid from '../components/patterns/PatternGrid';
 import PatternList from '../components/patterns/PatternList';
+import LoadingSpinner from '../components/common/LoadingSpinner';
+import ErrorMessage from '../components/common/ErrorMessage';
 import { usePatterns } from '../hooks/usePatterns';
 import { Pattern } from '../types/patternTypes';
 
@@ -20,7 +22,25 @@ const PatternManagement: React.FC = () => {
     setActiveTab,
     filters,
     setFilters,
+    refreshPatterns
   } = usePatterns();
+
+  // State for pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(12);
+
+  // Calculate current items to display
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentPatterns = filteredPatterns.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredPatterns.length / itemsPerPage);
+
+  // Change page
+  const handlePageChange = (pageNumber: number) => {
+    // Scroll to top on page change
+    window.scrollTo(0, 0);
+    setCurrentPage(pageNumber);
+  };
 
   const handlePatternClick = (pattern: Pattern) => {
     // Add logging to verify the correct path
@@ -30,49 +50,172 @@ const PatternManagement: React.FC = () => {
     navigate(`/patterns/${pattern.id}`);
   };
 
-  if (loading) {
-    return (
-      <div className='flex h-full items-center justify-center'>
-        <div className='text-center'>
-          <div className='animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-amber-500 mx-auto'></div>
-          <p className='mt-4 text-stone-700'>Loading patterns...</p>
-        </div>
-      </div>
-    );
-  }
+  const handleRetry = useCallback(() => {
+    refreshPatterns();
+  }, [refreshPatterns]);
 
-  if (error) {
+  // Render pagination controls
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
+
     return (
-      <div className='flex h-full items-center justify-center'>
-        <div className='text-center bg-red-50 rounded-lg p-6 max-w-md'>
-          <svg
-            xmlns='http://www.w3.org/2000/svg'
-            className='h-10 w-10 text-red-500 mx-auto mb-4'
-            fill='none'
-            viewBox='0 0 24 24'
-            stroke='currentColor'
-          >
-            <path
-              strokeLinecap='round'
-              strokeLinejoin='round'
-              strokeWidth={2}
-              d='M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
-            />
-          </svg>
-          <h3 className='text-lg font-medium text-red-800 mb-2'>
-            Error Loading Patterns
-          </h3>
-          <p className='text-red-700'>{error}</p>
-          <button
-            className='mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md text-sm font-medium'
-            onClick={() => window.location.reload()}
-          >
-            Try Again
-          </button>
-        </div>
+      <div className="flex justify-center mt-6 space-x-2">
+        <button
+          onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+          className={`px-3 py-1 rounded-md ${currentPage === 1 
+            ? 'bg-stone-100 text-stone-400 cursor-not-allowed' 
+            : 'bg-stone-200 text-stone-700 hover:bg-stone-300'}`}
+        >
+          Previous
+        </button>
+        
+        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+          // Show pages around current page
+          const pageNum = currentPage > 3 && totalPages > 5
+            ? currentPage - 3 + i + (totalPages - currentPage < 2 ? totalPages - currentPage - 2 : 0)
+            : i + 1;
+          
+          // Don't show pages beyond total
+          if (pageNum > totalPages) return null;
+          
+          return (
+            <button
+              key={pageNum}
+              onClick={() => handlePageChange(pageNum)}
+              className={`px-3 py-1 rounded-md ${currentPage === pageNum
+                ? 'bg-amber-600 text-white'
+                : 'bg-stone-200 text-stone-700 hover:bg-stone-300'}`}
+            >
+              {pageNum}
+            </button>
+          );
+        })}
+        
+        {totalPages > 5 && currentPage < totalPages - 2 && (
+          <>
+            <span className="px-1 py-1">...</span>
+            <button
+              onClick={() => handlePageChange(totalPages)}
+              className="px-3 py-1 rounded-md bg-stone-200 text-stone-700 hover:bg-stone-300"
+            >
+              {totalPages}
+            </button>
+          </>
+        )}
+        
+        <button
+          onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage === totalPages}
+          className={`px-3 py-1 rounded-md ${currentPage === totalPages
+            ? 'bg-stone-100 text-stone-400 cursor-not-allowed'
+            : 'bg-stone-200 text-stone-700 hover:bg-stone-300'}`}
+        >
+          Next
+        </button>
       </div>
     );
-  }
+  };
+
+  // Render the main content based on loading/error states
+  const renderContent = () => {
+    if (loading && filteredPatterns.length === 0) {
+      return (
+        <div className='flex h-full items-center justify-center'>
+          <LoadingSpinner size="large" color="amber" message="Loading patterns..." />
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className='flex h-full items-center justify-center'>
+          <div className='text-center bg-red-50 rounded-lg p-6 max-w-md'>
+            <svg
+              xmlns='http://www.w3.org/2000/svg'
+              className='h-10 w-10 text-red-500 mx-auto mb-4'
+              fill='none'
+              viewBox='0 0 24 24'
+              stroke='currentColor'
+            >
+              <path
+                strokeLinecap='round'
+                strokeLinejoin='round'
+                strokeWidth={2}
+                d='M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+              />
+            </svg>
+            <h3 className='text-lg font-medium text-red-800 mb-2'>
+              Error Loading Patterns
+            </h3>
+            <p className='text-red-700'>{error}</p>
+            <button
+              className='mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md text-sm font-medium'
+              onClick={handleRetry}
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Show no results message if no patterns match the filters
+    if (filteredPatterns.length === 0) {
+      return (
+        <div className='flex h-full items-center justify-center'>
+          <div className='text-center bg-stone-50 rounded-lg p-6 max-w-md'>
+            <svg
+              xmlns='http://www.w3.org/2000/svg'
+              className='h-10 w-10 text-stone-400 mx-auto mb-4'
+              fill='none'
+              viewBox='0 0 24 24'
+              stroke='currentColor'
+            >
+              <path
+                strokeLinecap='round'
+                strokeLinejoin='round'
+                strokeWidth={2}
+                d='M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+              />
+            </svg>
+            <h3 className='text-lg font-medium text-stone-700 mb-2'>
+              No Patterns Found
+            </h3>
+            <p className='text-stone-500'>
+              No patterns match your current filters. Try adjusting your search criteria.
+            </p>
+            <button
+              className='mt-4 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-sm font-medium'
+              onClick={() => setFilters({})}
+            >
+              Clear Filters
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Show patterns grid or list
+    return (
+      <>
+        {viewMode === 'grid' ? (
+          <PatternGrid
+            patterns={currentPatterns}
+            onPatternClick={handlePatternClick}
+            isLoading={loading}
+          />
+        ) : (
+          <PatternList
+            patterns={currentPatterns}
+            onPatternClick={handlePatternClick}
+            isLoading={loading}
+          />
+        )}
+        {renderPagination()}
+      </>
+    );
+  };
 
   return (
     <div className='flex flex-col h-full'>
@@ -120,7 +263,10 @@ const PatternManagement: React.FC = () => {
           </div>
 
           {/* Quick Actions */}
-          <button className='bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center'>
+          <button 
+            className='bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center'
+            onClick={() => navigate('/patterns/new')}
+          >
             <svg
               xmlns='http://www.w3.org/2000/svg'
               className='h-5 w-5 mr-2'
@@ -204,17 +350,7 @@ const PatternManagement: React.FC = () => {
 
       {/* Pattern List/Grid */}
       <div className='flex-1 overflow-y-auto bg-stone-50 p-6'>
-        {viewMode === 'grid' ? (
-          <PatternGrid
-            patterns={filteredPatterns}
-            onPatternClick={handlePatternClick}
-          />
-        ) : (
-          <PatternList
-            patterns={filteredPatterns}
-            onPatternClick={handlePatternClick}
-          />
-        )}
+        {renderContent()}
       </div>
 
       {/* Pattern Stats Footer */}
@@ -223,7 +359,8 @@ const PatternManagement: React.FC = () => {
           <div>
             {filteredPatterns.length}{' '}
             {filteredPatterns.length === 1 ? 'pattern' : 'patterns'}{' '}
-            {filters.searchQuery ? 'found' : 'total'}
+            {filters.searchQuery ? 'found' : 'total'}{' '}
+            {loading && '(refreshing...)'}
           </div>
           <div>
             {activeTab === 'favorites' && 'Showing favorites'}

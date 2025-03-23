@@ -1,8 +1,11 @@
 // src/components/patterns/components/ComponentDetail.tsx
 
+import { Edit, X } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useComponentContext } from '../../../context/ComponentContext';
 import { Component } from '../../../types/patternTypes';
+import ErrorMessage from '../../common/ErrorMessage';
+import LoadingSpinner from '../../common/LoadingSpinner';
 import ComponentMaterialList from './ComponentMaterialList';
 
 interface ComponentDetailProps {
@@ -20,14 +23,26 @@ const ComponentDetail: React.FC<ComponentDetailProps> = ({
   const [component, setComponent] = useState<Component | undefined>(undefined);
 
   useEffect(() => {
-    setComponent(getComponentById(componentId));
+    const fetchComponent = async () => {
+      try {
+        const result = await getComponentById(componentId);
+        setComponent(result || undefined);
+      } catch (err) {
+        console.error(`Error fetching component ${componentId}:`, err);
+      }
+    };
+
+    fetchComponent();
   }, [componentId, getComponentById]);
 
-  if (loading) return <div className='p-4'>Loading component details...</div>;
-  if (error) return <div className='p-4 text-red-500'>Error: {error}</div>;
+  if (loading)
+    return (
+      <LoadingSpinner size='medium' message='Loading component details...' />
+    );
+  if (error) return <ErrorMessage message={error} />;
   if (!component) return <div className='p-4'>Component not found</div>;
 
-  const attributesList = Object.entries(component.attributes).map(
+  const attributesList = Object.entries(component.attributes || {}).map(
     ([key, value]) => (
       <div
         key={key}
@@ -48,20 +63,7 @@ const ComponentDetail: React.FC<ComponentDetailProps> = ({
       <div className='bg-amber-600 p-4 flex justify-between items-center'>
         <h2 className='text-xl font-semibold text-white'>{component.name}</h2>
         <button onClick={onClose} className='text-white hover:text-amber-200'>
-          <svg
-            xmlns='http://www.w3.org/2000/svg'
-            className='h-6 w-6'
-            fill='none'
-            viewBox='0 0 24 24'
-            stroke='currentColor'
-          >
-            <path
-              strokeLinecap='round'
-              strokeLinejoin='round'
-              strokeWidth={2}
-              d='M6 18L18 6M6 6l12 12'
-            />
-          </svg>
+          <X className='h-6 w-6' />
         </button>
       </div>
 
@@ -119,9 +121,10 @@ const ComponentDetail: React.FC<ComponentDetailProps> = ({
 
           <div className='flex gap-2 mt-4'>
             <button
-              className='bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-md text-sm font-medium'
+              className='bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center'
               onClick={() => onEdit && onEdit(component)}
             >
+              <Edit className='h-4 w-4 mr-2' />
               Edit Component
             </button>
           </div>

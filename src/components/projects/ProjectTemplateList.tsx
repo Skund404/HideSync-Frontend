@@ -35,17 +35,29 @@ const ProjectTemplateList: React.FC<ProjectTemplateListProps> = ({
 
   // Apply filters whenever templates or filter changes
   useEffect(() => {
-    if (templates.length > 0) {
-      const filtered = getFilteredTemplates(filter);
-      setFilteredTemplates(filtered);
-    } else {
-      setFilteredTemplates([]);
-    }
+    const fetchAndFilterTemplates = async () => {
+      try {
+        if (templates.length > 0) {
+          // Await the Promise before setting state
+          const filtered = await getFilteredTemplates(filter);
+          setFilteredTemplates(filtered);
+        } else {
+          setFilteredTemplates([]);
+        }
+      } catch (err) {
+        console.error('Error filtering templates:', err);
+        setFilteredTemplates([]);
+      }
+    };
+
+    fetchAndFilterTemplates();
   }, [templates, filter, getFilteredTemplates]);
 
   // Format date for display
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString('en-US', {
+  const formatDate = (date: string | Date) => {
+    // Convert string to Date if needed
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    return dateObj.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -183,7 +195,7 @@ const ProjectTemplateList: React.FC<ProjectTemplateListProps> = ({
               >
                 <path
                   fillRule='evenodd'
-                  d='M10 3a1 1 0 00-1 1v5H4a1 1 0 100 2h5v5a1 1 0 102 0v-5h5a1 1 0 100-2h-5V4a1 1 0 00-1-1z'
+                  d='M10 3a1 1 0 00-1 1v5H4a1 1 0 100 2h5v5a1 1 0 102 0v-5h5a1 1 0 00-1-1z'
                   clipRule='evenodd'
                 />
               </svg>

@@ -1,3 +1,4 @@
+// src/components/financial/workshop/PricingReferenceSheet.tsx
 import { ArrowDown, Calculator, Printer, Tag } from 'lucide-react';
 import React, { useRef } from 'react';
 import { useFinancial } from '../../../context/FinancialContext';
@@ -5,13 +6,26 @@ import {
   formatCurrency,
   formatPercentage,
 } from '../../../utils/financialHelpers';
+import LoadingSpinner from '../../common/LoadingSpinner';
+import ErrorMessage from '../../common/ErrorMessage';
 
 const PricingReferenceSheet: React.FC = () => {
-  const { productMetrics, calculatorInputs, calculatorResults, loading } =
-    useFinancial();
+  const { 
+    productMetrics, 
+    calculatorInputs, 
+    calculatorResults, 
+    loading, 
+    loadingState,
+    error,
+    refreshData
+  } = useFinancial();
 
   const printRef = useRef<HTMLDivElement>(null);
 
+  // Determine if we're loading the specific data needed for this component
+  const isLoading = loading || loadingState.productMetrics;
+
+  // Handle print functionality
   const handlePrint = () => {
     if (printRef.current) {
       const printContents = printRef.current.innerHTML;
@@ -55,13 +69,27 @@ const PricingReferenceSheet: React.FC = () => {
     }
   };
 
-  if (loading) {
+  // Show loading spinner when loading data
+  if (isLoading) {
     return (
       <div className='flex items-center justify-center h-64'>
-        <div className='text-center'>
-          <div className='inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-600'></div>
-          <p className='mt-2 text-sm text-stone-500'>Loading pricing data...</p>
-        </div>
+        <LoadingSpinner
+          size="medium"
+          color="amber"
+          message="Loading pricing data..."
+        />
+      </div>
+    );
+  }
+
+  // Handle error state with retry option
+  if (error) {
+    return (
+      <div className='flex items-center justify-center h-64'>
+        <ErrorMessage 
+          message="Unable to load pricing reference data. Please try again." 
+          onRetry={refreshData} 
+        />
       </div>
     );
   }
@@ -209,44 +237,50 @@ const PricingReferenceSheet: React.FC = () => {
                 Product Type Margins
               </h3>
 
-              <table className='min-w-full text-sm'>
-                <thead>
-                  <tr>
-                    <th className='text-left font-medium text-stone-600'>
-                      Product
-                    </th>
-                    <th className='text-right font-medium text-stone-600'>
-                      Avg Price
-                    </th>
-                    <th className='text-right font-medium text-stone-600'>
-                      Margin
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {productMetrics.slice(0, 6).map((product, index) => {
-                    // Calculate average price from sales and quantity
-                    const avgPrice = product.quantity
-                      ? product.sales / product.quantity
-                      : 0;
+              {productMetrics.length === 0 ? (
+                <p className='text-center text-stone-500 py-4'>
+                  No product data available for reference
+                </p>
+              ) : (
+                <table className='min-w-full text-sm'>
+                  <thead>
+                    <tr>
+                      <th className='text-left font-medium text-stone-600'>
+                        Product
+                      </th>
+                      <th className='text-right font-medium text-stone-600'>
+                        Avg Price
+                      </th>
+                      <th className='text-right font-medium text-stone-600'>
+                        Margin
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {productMetrics.slice(0, 6).map((product, index) => {
+                      // Calculate average price from sales and quantity
+                      const avgPrice = product.quantity
+                        ? product.sales / product.quantity
+                        : 0;
 
-                    return (
-                      <tr
-                        key={product.name}
-                        className='border-b border-stone-100 last:border-0'
-                      >
-                        <td className='py-2'>{product.name}</td>
-                        <td className='py-2 text-right'>
-                          {formatCurrency(avgPrice)}
-                        </td>
-                        <td className='py-2 text-right font-medium'>
-                          {formatPercentage(product.margin)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                      return (
+                        <tr
+                          key={product.name}
+                          className='border-b border-stone-100 last:border-0'
+                        >
+                          <td className='py-2'>{product.name}</td>
+                          <td className='py-2 text-right'>
+                            {formatCurrency(avgPrice)}
+                          </td>
+                          <td className='py-2 text-right font-medium'>
+                            {formatPercentage(product.margin)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
             </div>
 
             {/* Pricing Formula Reference */}

@@ -1,6 +1,11 @@
 // src/types/projectTimeline.ts
 
-// Comprehensive enum for Project Status
+/**
+ * Comprehensive enum for Project Status.
+ * This enum represents the various phases and statuses that a project may have,
+ * based on the ER diagram. It covers the phases from planning to delivery,
+ * as well as additional statuses.
+ */
 export enum ProjectStatus {
   // Planning phase
   CONCEPT = 'CONCEPT',
@@ -71,34 +76,57 @@ export enum ProjectStatus {
   IN_PROGRESS = 'IN_PROGRESS',
 }
 
-// Comprehensive Project interface
+/**
+ * Project interface aligned with the ER diagram.
+ *
+ * The ER diagram for Project defines these fields:
+ * - id, name, description, status, startDate, dueDate, completedDate,
+ *   progress, completionPercentage, type (project type), customer, and notes.
+ *
+ * Here, we update the interface accordingly:
+ * - Replaced "deadline" with "dueDate".
+ * - Added "description" and "completionPercentage".
+ * - Renamed "type" to "projectType" for clarity.
+ * - Replaced "client" with "customer" (a string name) to match the ER diagram.
+ */
 export interface Project {
   id: string;
   name: string;
+  description?: string;
   status: ProjectStatus;
-  startDate?: Date | string;
-  deadline?: Date | string;
+  startDate: Date | string;
+  dueDate: Date | string;
   completedDate?: Date | string;
   progress?: number;
-  components?: { name: string }[];
-  materials?: { name: string }[];
-  client?: { name: string };
-  skillLevel?: string;
-  type?: string;
+  completionPercentage?: number;
+  projectType?: string;
+  salesId?: string; // Added to align with ER diagram
+  templateId?: string; // Added to align with ER diagram
+  customer?: string;
   notes?: string;
 }
 
+/**
+ * TimelineTask interface for representing individual tasks within a project's timeline.
+ *
+ * This mirrors the ER diagram for TimelineTask, which includes:
+ * - id, name, startDate, endDate, progress, status, dependencies, and isCriticalPath.
+ */
 export interface TimelineTask {
   id: string;
+  projectId?: string; // Added to align with ER diagram
   name: string;
-  startDate: Date;
-  endDate: Date;
+  startDate: Date | string;
+  endDate: Date | string;
   progress: number;
   status: ProjectStatus;
   dependencies?: string[];
   isCriticalPath?: boolean;
 }
 
+/**
+ * Properties for a ProjectTimeline component.
+ */
 export interface ProjectTimelineProps {
   project: Project;
   showCriticalPath?: boolean;

@@ -1,91 +1,85 @@
-import React from "react";
+// src/components/dashboard/StatCard.tsx
+import React, { ReactNode, useMemo } from 'react';
 
-interface StatCardProps {
+export interface StatCardProps {
   title: string;
-  value: number | string;
-  icon: React.ReactNode;
-  color: "amber" | "blue" | "red" | "green" | "purple";
-  trend?: {
-    value: string;
-    isPositive: boolean;
-  };
-  detail?: string;
-  percentage?: number;
+  value: number;
+  icon: ReactNode;
+  color: 'blue' | 'green' | 'red' | 'amber';
+  detail: string;
+  percentage: number;
+  invertPercentage?: boolean; // Optional prop for inverting percentage logic
+  onClick?: () => void; // Added to support clickable cards
 }
 
+/**
+ * A reusable stat card component for displaying metrics in a consistent way.
+ * Used throughout the dashboard for various statistics.
+ */
 const StatCard: React.FC<StatCardProps> = ({
   title,
   value,
   icon,
   color,
-  trend,
   detail,
-  percentage = 0,
+  percentage,
+  invertPercentage = false, // Default to false if not provided
+  onClick,
 }) => {
-  const colorClasses = {
-    amber: {
-      bg: "bg-amber-100",
-      text: "text-amber-700",
-      progress: "bg-amber-500",
-    },
-    blue: {
-      bg: "bg-blue-100",
-      text: "text-blue-600",
-      progress: "bg-blue-500",
-    },
-    red: {
-      bg: "bg-red-100",
-      text: "text-red-600",
-      progress: "bg-red-500",
-    },
-    green: {
-      bg: "bg-green-100",
-      text: "text-green-600",
-      progress: "bg-green-500",
-    },
-    purple: {
-      bg: "bg-purple-100",
-      text: "text-purple-600",
-      progress: "bg-purple-500",
-    },
-  };
+  // Memoize color classes to prevent recalculation on every render
+  const colorClasses = useMemo(
+    () => ({
+      blue: 'bg-blue-50 text-blue-600',
+      green: 'bg-green-50 text-green-600',
+      red: 'bg-red-50 text-red-600',
+      amber: 'bg-amber-50 text-amber-600',
+    }),
+    []
+  );
+
+  // Memoize percentage class to prevent recalculation
+  const percentageClass = useMemo(() => {
+    if (invertPercentage) {
+      // For maintenance and needs attention, lower percentage is better
+      return percentage <= 20
+        ? 'text-green-600'
+        : percentage <= 50
+        ? 'text-yellow-600'
+        : 'text-red-600';
+    } else {
+      // For standard cases, higher percentage is better
+      return percentage >= 80
+        ? 'text-green-600'
+        : percentage >= 50
+        ? 'text-yellow-600'
+        : 'text-red-600';
+    }
+  }, [percentage, invertPercentage]);
+
+  // Determine cursor style based on whether onClick is provided
+  const cursorStyle = onClick ? 'cursor-pointer' : '';
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-sm border border-stone-200">
-      <div className="flex justify-between items-start">
+    <div
+      className={`${colorClasses[color]} p-6 rounded-lg shadow-sm border border-stone-200 hover:shadow-md transition-shadow ${cursorStyle}`}
+      onClick={onClick}
+    >
+      <div className='flex justify-between items-start'>
         <div>
-          <h3 className="text-sm font-medium text-stone-500">{title}</h3>
-          <p className="text-3xl font-bold text-stone-800 mt-1">{value}</p>
+          <p className='text-sm font-medium text-stone-500 mb-1'>{title}</p>
+          <p className='text-2xl font-bold'>{value}</p>
         </div>
-        <div className={`${colorClasses[color].bg} p-3 rounded-md`}>
-          <div className={colorClasses[color].text}>{icon}</div>
-        </div>
+        <div className={`${colorClasses[color]} p-3 rounded-md`}>{icon}</div>
       </div>
-
-      {(detail || trend) && (
-        <div className="mt-4">
-          <div className="flex justify-between text-sm">
-            {detail && <span className="text-stone-500">{detail}</span>}
-            {trend && (
-              <span
-                className={`${
-                  trend.isPositive ? "text-green-600" : "text-red-600"
-                } font-medium`}
-              >
-                {trend.isPositive ? "↑" : "↓"} {trend.value}
-              </span>
-            )}
-          </div>
-          <div className="w-full h-2 bg-stone-100 rounded-full mt-2">
-            <div
-              className={`h-full ${colorClasses[color].progress} rounded-full`}
-              style={{ width: `${percentage}%` }}
-            />
-          </div>
-        </div>
-      )}
+      <div className='mt-4 flex justify-between items-center'>
+        <p className='text-sm text-stone-500'>{detail}</p>
+        <p className={`text-sm font-medium ${percentageClass}`}>
+          {percentage.toFixed(1)}%
+        </p>
+      </div>
     </div>
   );
 };
 
-export default StatCard;
+// Use React.memo to prevent unnecessary re-renders
+export default React.memo(StatCard);

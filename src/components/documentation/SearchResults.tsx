@@ -2,7 +2,10 @@
 
 import { Search } from 'lucide-react';
 import React from 'react';
-import { DocumentationSearchResult } from '../../types/documentationTypes';
+import {
+  DocumentationResource,
+  DocumentationSearchResult,
+} from '../../types/documentationTypes';
 import ResourceCard from './ResourceCard';
 
 interface SearchResultsProps {
@@ -60,7 +63,7 @@ const SearchResults: React.FC<SearchResultsProps> = ({
       </div>
 
       <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
-        {results.resources.map((resource) => (
+        {results.resources.map((resource: DocumentationResource) => (
           <ResourceCard
             key={resource.id}
             resource={resource}

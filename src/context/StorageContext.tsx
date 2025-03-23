@@ -1,5 +1,13 @@
-import { api } from '@services/api';
-import { StorageCell, StorageLocation } from '@types';
+// src/context/StorageContext.tsx
+import { storageService } from '@/services/storage-service';
+import { StorageLocationType } from '@/types/enums';
+import {
+  SectionType,
+  StorageCell,
+  StorageLocation,
+  StorageMoveRequest,
+  StorageStatus,
+} from '@/types/storage'; // Import SectionType and StorageStatus from storage.ts
 import React, {
   createContext,
   ReactNode,
@@ -8,7 +16,31 @@ import React, {
   useEffect,
   useState,
 } from 'react';
-import { StorageMoveRequest } from '../types/storage';
+
+// Pagination and Filtering Interfaces
+export interface PaginationParams {
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortDirection?: 'asc' | 'desc';
+}
+
+export interface StorageLocationFilter {
+  type?: StorageLocationType[];
+  section?: SectionType[];
+  status?: StorageStatus[];
+  minUtilization?: number;
+  maxUtilization?: number;
+}
+
+export interface MaterialFilter {
+  category?: string[];
+  type?: string[];
+  status?: string[];
+  minQuantity?: number;
+  maxQuantity?: number;
+  supplier?: string[];
+}
 
 // Define context interface
 interface StorageContextType {
@@ -16,10 +48,61 @@ interface StorageContextType {
   storageLocations: StorageLocation[];
   storageCells: StorageCell[];
   selectedLocation: StorageLocation | null;
-  fetchStorageLocations: () => Promise<void>;
-  selectStorageLocation: (id: string | null) => void;
 
-  // Storage overview for dashboard
+  // Pagination and filtering
+  pagination: {
+    total: number;
+    page: number;
+    pageSize: number;
+  };
+
+  // Fetch methods with pagination and filtering
+  fetchStorageLocations: (
+    pagination?: PaginationParams,
+    filters?: StorageLocationFilter
+  ) => Promise<void>;
+
+  fetchMaterials: (
+    pagination?: PaginationParams,
+    filters?: MaterialFilter
+  ) => Promise<{
+    data: any[];
+    total: number;
+    page: number;
+    pageSize: number;
+  }>;
+
+  // Storage location management
+  selectStorageLocation: (id: string | null) => void;
+  createStorageLocation: (
+    location: Omit<StorageLocation, 'id'>
+  ) => Promise<StorageLocation>;
+  updateStorageLocation: (
+    id: string,
+    updates: Partial<StorageLocation>
+  ) => Promise<StorageLocation>;
+  deleteStorageLocation: (id: string) => Promise<void>;
+
+  // Batch operations
+  createMultipleStorageLocations: (
+    locations: Omit<StorageLocation, 'id'>[]
+  ) => Promise<StorageLocation[]>;
+  updateMultipleStorageLocations: (
+    updates: Array<{
+      id: string;
+      data: Partial<StorageLocation>;
+    }>
+  ) => Promise<StorageLocation[]>;
+  deleteMultipleStorageLocations: (ids: string[]) => Promise<void>;
+
+  // Material management
+  importMaterialsFromCSV: (file: File) => Promise<{
+    imported: number;
+    errors: any[];
+  }>;
+  exportMaterialsToCSV: (filters?: MaterialFilter) => Promise<void>;
+
+  // Storage overview
   storageOverview: {
     totalCapacity: number;
     totalUtilized: number;
@@ -37,27 +120,17 @@ interface StorageContextType {
       utilized: number;
       utilizationPercentage: number;
     }>;
-    recentMoves: any[]; // Replace with proper type if available
+    recentMoves: any[];
     lastUpdated: string;
   } | null;
-  fetchStorageOverview: () => Promise<void>;
 
-  // Materials in storage
-  materialsInStorage: Record<string, any[]>;
-  getItemsForStorage: (storageId: string) => any[];
+  // Storage methods
+  fetchStorageOverview: () => Promise<void>;
+  fetchStorageCells: (storageId: string) => Promise<void>;
+  getItemsForStorage: (storageId: string) => any[]; // Consider typing
   getStorageUtilization: (storageId: string) => number;
 
-  // Storage management
-  createStorageLocation: (
-    location: Omit<StorageLocation, 'id'>
-  ) => Promise<StorageLocation>;
-  updateStorageLocation: (
-    id: string,
-    updates: Partial<StorageLocation>
-  ) => Promise<StorageLocation>;
-  deleteStorageLocation: (id: string) => Promise<boolean>;
-
-  // Material assignments
+  // Material movement
   assignMaterialToStorage: (
     materialId: number,
     storageId: string,
@@ -73,7 +146,6 @@ interface StorageContextType {
     materialId: number,
     storageId: string
   ) => Promise<boolean>;
-  fetchStorageCells: (storageId: string) => Promise<void>;
   moveItem: (
     moveRequest: Omit<StorageMoveRequest, 'id' | 'requestDate' | 'requestedBy'>
   ) => Promise<boolean>;
@@ -86,7 +158,7 @@ interface StorageContextType {
     utilizationPercentage: number;
   };
 
-  // Loading state
+  // Loading and error states
   loading: boolean;
   error: string | null;
 }
@@ -98,107 +170,262 @@ const StorageContext = createContext<StorageContextType | undefined>(undefined);
 export const StorageProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
-  // State for storage locations and cells
+  // State management
   const [storageLocations, setStorageLocations] = useState<StorageLocation[]>(
     []
   );
   const [storageCells, setStorageCells] = useState<StorageCell[]>([]);
   const [selectedLocation, setSelectedLocation] =
     useState<StorageLocation | null>(null);
-
-  // State for storage overview
   const [storageOverview, setStorageOverview] =
     useState<StorageContextType['storageOverview']>(null);
 
-  // State for materials in storage
-  const [materialsInStorage, setMaterialsInStorage] = useState<
-    Record<string, any[]>
-  >({});
-
-  // Loading and error states
-  const [loading, setLoading] = useState<boolean>(true);
+  // Pagination and loading states
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    page: 1,
+    pageSize: 10,
+  });
 
-  // Fetch all materials and organize by storage location
-  const fetchMaterialsInStorage = useCallback(async () => {
-    try {
-      // In a real app, this would be an API call to get materials with their storage locations
-      // For now, using mock data
-      const materials = await api.get<any[]>('storage/materials');
-
-      // Group materials by storage location
-      const materialsByStorage: Record<string, any[]> = {};
-
-      materials.forEach((material) => {
-        if (material.storageId) {
-          if (!materialsByStorage[material.storageId]) {
-            materialsByStorage[material.storageId] = [];
-          }
-          materialsByStorage[material.storageId].push(material);
-        }
-      });
-
-      setMaterialsInStorage(materialsByStorage);
-    } catch (err) {
-      console.error('Error fetching materials in storage:', err);
-    }
-  }, []);
-
-  // Fetch storage locations
-  const fetchStorageLocations = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const locations = await api.get<StorageLocation[]>(
-        'storage/storageLocations'
-      );
-      const cells = await api.get<StorageCell[]>('storage/storageCells');
-      setStorageLocations(locations);
-      setStorageCells(cells);
-
-      // Also fetch materials in storage
-      await fetchMaterialsInStorage();
-    } catch (err) {
-      console.error('Error fetching storage data:', err);
-      setError('Failed to load storage data. Please try again later.');
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchMaterialsInStorage]);
-
-  // Fetch storage overview data for dashboard
-  const fetchStorageOverview = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const overview = await api.get('storage/storageOverview');
-      setStorageOverview(overview as StorageContextType['storageOverview']);
-    } catch (err) {
-      console.error('Error fetching storage overview:', err);
-      setError('Failed to load storage overview data. Please try again later.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Fetch cells for a specific storage location
-  const fetchStorageCells = useCallback(
-    async (storageId: string): Promise<void> => {
+  // Fetch storage locations with pagination and filtering
+  const fetchStorageLocations = useCallback(
+    async (
+      paginationParams?: PaginationParams,
+      filters?: StorageLocationFilter
+    ) => {
+      setLoading(true);
+      setError(null);
       try {
-        const cells = await api.get<StorageCell[]>(
-          `storage/cells/${storageId}`
+        const response = await storageService.getStorageLocations(
+          paginationParams,
+          filters
         );
-        setStorageCells((prev) => [
-          ...prev.filter((cell) => cell.storageId !== storageId),
-          ...cells,
-        ]);
-      } catch (err) {
-        console.error(`Error fetching storage cells for ${storageId}:`, err);
-        throw new Error('Failed to load storage cells');
+
+        setStorageLocations(response.data);
+        setPagination({
+          total: response.total,
+          page: response.page,
+          pageSize: response.pageSize,
+        });
+      } catch (err: any) {
+        // Explicitly type err as any
+        setError('Failed to fetch storage locations: ' + (err.message || err)); // Include error message
+        console.error(err);
+      } finally {
+        setLoading(false);
       }
     },
     []
   );
+
+  // Fetch materials with pagination and filtering
+  const fetchMaterials = useCallback(
+    async (paginationParams?: PaginationParams, filters?: MaterialFilter) => {
+      setLoading(true);
+      setError(null);
+      try {
+        // Added implementation of missing method
+        const response = await storageService.getMaterials(
+          paginationParams,
+          filters
+        );
+        return response;
+      } catch (err: any) {
+        // Explicitly type err as any
+        setError('Failed to fetch materials: ' + (err.message || err)); // Include error message
+        console.error(err);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  // Batch create storage locations
+  const createMultipleStorageLocations = useCallback(
+    async (locations: Omit<StorageLocation, 'id'>[]) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const created = await storageService.bulkCreateStorageLocations(
+          locations
+        );
+        await fetchStorageLocations();
+        return created;
+      } catch (err: any) {
+        // Explicitly type err as any
+        setError('Failed to create storage locations: ' + (err.message || err)); // Include error message
+        console.error(err);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [fetchStorageLocations]
+  );
+
+  // Batch update storage locations
+  const updateMultipleStorageLocations = useCallback(
+    async (
+      updates: Array<{
+        id: string;
+        data: Partial<StorageLocation>;
+      }>
+    ) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const updated = await storageService.bulkUpdateStorageLocations(
+          updates
+        );
+        await fetchStorageLocations();
+        return updated;
+      } catch (err: any) {
+        // Explicitly type err as any
+        setError('Failed to update storage locations: ' + (err.message || err)); // Include error message
+        console.error(err);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [fetchStorageLocations]
+  );
+
+  // Batch delete storage locations
+  const deleteMultipleStorageLocations = useCallback(
+    async (ids: string[]) => {
+      setLoading(true);
+      setError(null);
+      try {
+        await storageService.bulkDeleteStorageLocations(ids);
+        await fetchStorageLocations();
+      } catch (err: any) {
+        // Explicitly type err as any
+        setError('Failed to delete storage locations: ' + (err.message || err)); // Include error message
+        console.error(err);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [fetchStorageLocations]
+  );
+
+  // Import materials from CSV
+  const importMaterialsFromCSV = useCallback(async (file: File) => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Added implementation of missing method
+      return await storageService.importMaterialsFromCSV(file);
+    } catch (err: any) {
+      // Explicitly type err as any
+      setError('Failed to import materials: ' + (err.message || err)); // Include error message
+      console.error(err);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Export materials to CSV
+  const exportMaterialsToCSV = useCallback(async (filters?: MaterialFilter) => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Added implementation of missing method
+      const blob = await storageService.exportMaterialsToCSV(filters);
+      storageService.downloadBlob(blob, 'materials-export.csv');
+    } catch (err: any) {
+      // Explicitly type err as any
+      setError('Failed to export materials: ' + (err.message || err)); // Include error message
+      console.error(err);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Fetch storage overview
+  const fetchStorageOverview = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const overviewData = await storageService.getStorageOverview();
+
+      // Transform the response to match the expected shape
+      const formattedOverview = {
+        totalCapacity: overviewData.totalCapacity,
+        totalUtilized: overviewData.usedCapacity,
+        utilizationPercentage: overviewData.utilizationPercentage,
+        itemBreakdown: {
+          leather: overviewData.itemsByType?.materials || 0,
+          hardware: overviewData.itemsByType?.products || 0,
+          supplies: overviewData.itemsByType?.tools || 0,
+          other: 0,
+        },
+        lowSpace: [], // You'll need to extract this from the response
+        recentMoves: [], // You'll need to fetch this separately
+        lastUpdated: new Date().toISOString(),
+      };
+
+      setStorageOverview(formattedOverview);
+    } catch (err: any) {
+      // Explicitly type err as any
+      setError('Failed to load storage overview: ' + (err.message || err)); // Include error message
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Fetch storage cells for a specific location
+  const fetchStorageCells = useCallback(async (storageId: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const cells = await storageService.getStorageCells(storageId);
+
+      // Convert cell positions if needed (row/col to x/y)
+      const normalizedCells: StorageCell[] = cells.map((cell) => {
+        // If the cell has row/col position, convert to x/y
+        if (
+          'position' in cell &&
+          typeof cell.position === 'object' &&
+          cell.position !== null &&
+          'row' in cell.position &&
+          'col' in cell.position &&
+          typeof cell.position.row === 'number' &&
+          typeof cell.position.col === 'number'
+        ) {
+          return {
+            ...cell,
+            position: {
+              x: cell.position.col,
+              y: cell.position.row,
+            },
+          } as StorageCell;
+        }
+        return cell;
+      });
+
+      setStorageCells((prev) => [
+        ...prev.filter((cell) => cell.storageId !== storageId),
+        ...normalizedCells,
+      ]);
+    } catch (err: any) {
+      // Explicitly type err as any
+      setError('Failed to fetch storage cells: ' + (err.message || err)); // Include error message
+      console.error(err);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   // Select a storage location
   const selectStorageLocation = useCallback(
@@ -215,218 +442,203 @@ export const StorageProvider: React.FC<{ children: ReactNode }> = ({
   );
 
   // Get items for a specific storage
-  const getItemsForStorage = useCallback(
-    (storageId: string) => {
-      return materialsInStorage[storageId] || [];
-    },
-    [materialsInStorage]
-  );
+  const getItemsForStorage = useCallback((storageId: string) => {
+    // This would typically come from an API call in a real app.  Consider fetching this data.
+    return [];
+  }, []);
 
-  // Calculate storage utilization percentage
+  // Calculate storage utilization
   const getStorageUtilization = useCallback(
     (storageId: string) => {
       const location = storageLocations.find((loc) => loc.id === storageId);
-      if (!location) return 0;
-
-      return Math.round((location.utilized / location.capacity) * 100);
+      return location
+        ? Math.round((location.utilized / location.capacity) * 100)
+        : 0;
     },
     [storageLocations]
   );
 
-  // Create a new storage location
+  // Create a single storage location
   const createStorageLocation = useCallback(
-    async (location: Omit<StorageLocation, 'id'>): Promise<StorageLocation> => {
-      // In a real app, this would be an API call
-      // For now, simulate creating a new location
-      const newLocation: StorageLocation = {
-        id: `storage-${Date.now()}`,
-        ...location,
-        lastModified: new Date().toISOString(),
-      };
-
-      setStorageLocations((prev) => [...prev, newLocation]);
-      return newLocation;
+    async (location: Omit<StorageLocation, 'id'>) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const newLocation = await storageService.createStorageLocation(
+          location
+        );
+        await fetchStorageLocations();
+        return newLocation;
+      } catch (err: any) {
+        // Explicitly type err as any
+        setError('Failed to create storage location: ' + (err.message || err)); // Include error message
+        console.error(err);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
     },
-    []
+    [fetchStorageLocations]
   );
 
-  // Update a storage location
+  // Update a single storage location
   const updateStorageLocation = useCallback(
-    async (
-      id: string,
-      updates: Partial<StorageLocation>
-    ): Promise<StorageLocation> => {
-      const index = storageLocations.findIndex((loc) => loc.id === id);
-      if (index === -1) throw new Error('Storage location not found');
-
-      const updatedLocation = {
-        ...storageLocations[index],
-        ...updates,
-        lastModified: new Date().toISOString(),
-      };
-
-      const newLocations = [...storageLocations];
-      newLocations[index] = updatedLocation;
-      setStorageLocations(newLocations);
-
-      if (selectedLocation?.id === id) {
-        setSelectedLocation(updatedLocation);
+    async (id: string, updates: Partial<StorageLocation>) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const updatedLocation = await storageService.updateStorageLocation(
+          id,
+          updates
+        );
+        await fetchStorageLocations();
+        return updatedLocation;
+      } catch (err: any) {
+        // Explicitly type err as any
+        setError('Failed to update storage location: ' + (err.message || err)); // Include error message
+        console.error(err);
+        throw err;
+      } finally {
+        setLoading(false);
       }
-
-      return updatedLocation;
     },
-    [storageLocations, selectedLocation]
+    [fetchStorageLocations]
   );
 
-  // Delete a storage location
+  // Delete a single storage location
   const deleteStorageLocation = useCallback(
-    async (id: string): Promise<boolean> => {
-      // In a real app, this would be an API call
-      setStorageLocations((prev) => prev.filter((loc) => loc.id !== id));
-
-      if (selectedLocation?.id === id) {
-        setSelectedLocation(null);
+    async (id: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        await storageService.deleteStorageLocation(id);
+        await fetchStorageLocations();
+      } catch (err: any) {
+        // Explicitly type err as any
+        setError('Failed to delete storage location: ' + (err.message || err)); // Include error message
+        console.error(err);
+        throw err;
+      } finally {
+        setLoading(false);
       }
-
-      return true;
     },
-    [selectedLocation]
+    [fetchStorageLocations]
   );
 
-  // Assign material to storage
+  // Material assignment methods
   const assignMaterialToStorage = useCallback(
     async (
       materialId: number,
       storageId: string,
       position: { x: number; y: number }
-    ): Promise<boolean> => {
-      // In a real app, this would be an API call
-      // Update the storage cells
-      const newCell: StorageCell = {
-        storageId,
-        position,
-        itemId: materialId,
-        itemType: 'material',
-        occupied: true,
-      };
-
-      setStorageCells((prev) => [
-        ...prev.filter(
-          (cell) =>
-            !(
-              cell.storageId === storageId &&
-              cell.position.x === position.x &&
-              cell.position.y === position.y
-            )
-        ),
-        newCell,
-      ]);
-
-      // Update storage utilization
-      const locationIndex = storageLocations.findIndex(
-        (loc) => loc.id === storageId
-      );
-      if (locationIndex !== -1) {
-        const newLocations = [...storageLocations];
-        newLocations[locationIndex] = {
-          ...newLocations[locationIndex],
-          utilized: newLocations[locationIndex].utilized + 1,
-          lastModified: new Date().toISOString(),
-        };
-        setStorageLocations(newLocations);
+    ) => {
+      setLoading(true);
+      setError(null);
+      try {
+        // Default quantity to 1 if not specified
+        const quantity = 1;
+        const assignment = await storageService.assignMaterialToStorage(
+          materialId,
+          storageId,
+          position,
+          quantity
+        );
+        return !!assignment; // Convert to boolean
+      } catch (err: any) {
+        setError(
+          'Failed to assign material to storage: ' + (err.message || err)
+        );
+        console.error(err);
+        return false;
+      } finally {
+        setLoading(false);
       }
-
-      return true;
     },
-    [storageLocations]
+    []
   );
 
-  // Remove material from storage
-  const removeMaterialFromStorage = useCallback(
-    async (materialId: number, storageId: string): Promise<boolean> => {
-      // In a real app, this would be an API call
-      // Update the storage cells
-      setStorageCells((prev) =>
-        prev.filter(
-          (cell) =>
-            !(cell.storageId === storageId && cell.itemId === materialId)
-        )
-      );
-
-      // Update storage utilization
-      const locationIndex = storageLocations.findIndex(
-        (loc) => loc.id === storageId
-      );
-      if (locationIndex !== -1) {
-        const newLocations = [...storageLocations];
-        newLocations[locationIndex] = {
-          ...newLocations[locationIndex],
-          utilized: Math.max(0, newLocations[locationIndex].utilized - 1),
-          lastModified: new Date().toISOString(),
-        };
-        setStorageLocations(newLocations);
-      }
-
-      return true;
-    },
-    [storageLocations]
-  );
-
-  // Move material from one storage to another
+  // Move material between storage locations
   const moveMaterialStorage = useCallback(
     async (
       materialId: number,
       fromStorageId: string,
       toStorageId: string,
       newPosition: { x: number; y: number }
-    ): Promise<boolean> => {
-      // Remove from old location
-      await removeMaterialFromStorage(materialId, fromStorageId);
-
-      // Add to new location
-      await assignMaterialToStorage(materialId, toStorageId, newPosition);
-
-      return true;
+    ) => {
+      setLoading(true);
+      setError(null);
+      try {
+        // Default quantity to 1 if not specified
+        const quantity = 1;
+        const success = await storageService.moveMaterialStorage(
+          materialId,
+          fromStorageId,
+          toStorageId,
+          newPosition,
+          quantity
+        );
+        return success;
+      } catch (err: any) {
+        setError(
+          'Failed to move material between storage locations: ' +
+            (err.message || err)
+        );
+        console.error(err);
+        return false;
+      } finally {
+        setLoading(false);
+      }
     },
-    [removeMaterialFromStorage, assignMaterialToStorage]
+    []
   );
 
-  // Move an item from one storage location to another
+  // Remove material from storage
+  const removeMaterialFromStorage = useCallback(
+    async (materialId: number, storageId: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const success = await storageService.removeMaterialFromStorage(
+          materialId,
+          storageId
+        );
+        return success;
+      } catch (err: any) {
+        setError(
+          'Failed to remove material from storage: ' + (err.message || err)
+        );
+        console.error(err);
+        return false;
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  // Move an item between storage locations
   const moveItem = useCallback(
     async (
       moveRequest: Omit<
         StorageMoveRequest,
         'id' | 'requestDate' | 'requestedBy'
       >
-    ): Promise<boolean> => {
+    ) => {
+      setLoading(true);
+      setError(null);
       try {
-        // In a real app, this would call an API
-        // For now, update local state directly
-
-        // 1. Remove item from current location (if it exists)
-        if (moveRequest.fromStorageId) {
-          await removeMaterialFromStorage(
-            moveRequest.itemId,
-            moveRequest.fromStorageId
-          );
-        }
-
-        // 2. Add item to new location
-        if (moveRequest.toStorageId) {
-          await assignMaterialToStorage(
-            moveRequest.itemId,
-            moveRequest.toStorageId,
-            moveRequest.toPosition
-          );
-        }
-
-        return true;
-      } catch (err) {
-        console.error('Error moving item:', err);
-        throw new Error('Failed to move item');
+        const success = await storageService.moveItem(moveRequest);
+        return success;
+      } catch (err: any) {
+        // Explicitly type err as any
+        setError('Failed to move item: ' + (err.message || err)); // Include error message
+        console.error(err);
+        return false;
+      } finally {
+        setLoading(false);
       }
     },
-    [assignMaterialToStorage, removeMaterialFromStorage]
+    []
   );
 
   // Calculate overall storage stats
@@ -451,40 +663,72 @@ export const StorageProvider: React.FC<{ children: ReactNode }> = ({
     };
   }, [storageLocations]);
 
+  // Compute storage stats
   const storageStats = calculateStorageStats();
 
-  // Load data on initial mount
+  // Load initial data on mount
   useEffect(() => {
-    fetchStorageLocations();
-  }, [fetchStorageLocations]);
+    const initializeData = async () => {
+      try {
+        await fetchStorageLocations();
+        await fetchStorageOverview();
+      } catch (err) {
+        console.error('Failed to initialize storage data', err);
+        setError('Failed to initialize storage data.'); // Set error state
+      }
+    };
 
-  // Context value
+    initializeData();
+  }, [fetchStorageLocations, fetchStorageOverview]);
+
+  // Prepare context value
   const contextValue: StorageContextType = {
+    // Storage locations and cells
     storageLocations,
     storageCells,
     selectedLocation,
+
+    // Pagination
+    pagination,
+
+    // Fetch methods
     fetchStorageLocations,
+    fetchMaterials,
+
+    // Storage location management
     selectStorageLocation,
-
-    storageOverview,
-    fetchStorageOverview,
-
-    materialsInStorage,
-    getItemsForStorage,
-    getStorageUtilization,
-
     createStorageLocation,
     updateStorageLocation,
     deleteStorageLocation,
 
+    // Batch operations
+    createMultipleStorageLocations,
+    updateMultipleStorageLocations,
+    deleteMultipleStorageLocations,
+
+    // Material management
+    importMaterialsFromCSV,
+    exportMaterialsToCSV,
+
+    // Storage overview
+    storageOverview,
+    fetchStorageOverview,
+
+    // Storage methods
+    fetchStorageCells,
+    getItemsForStorage,
+    getStorageUtilization,
+
+    // Material movement
     assignMaterialToStorage,
     moveMaterialStorage,
     removeMaterialFromStorage,
-    fetchStorageCells,
     moveItem,
 
+    // Storage stats
     storageStats,
 
+    // Loading and error states
     loading,
     error,
   };
@@ -504,3 +748,5 @@ export const useStorage = () => {
   }
   return context;
 };
+
+export default StorageContext;
